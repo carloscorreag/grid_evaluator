@@ -9,19 +9,19 @@ Requisitos del Sistema
 
 Instrucciones de Uso
 
-    1. Asegúrese de tener instaladas las bibliotecas necesarias: 
+1. Asegúrese de tener instaladas las bibliotecas necesarias: 
 
-    pip install netCDF4 pandas numpy seaborn matplotlib scipy
+	pip install netCDF4 pandas numpy seaborn matplotlib scipy
 
-	2. Coloque los archivos necesarios en el mismo directorio que el script del programa.
+2. Coloque los archivos necesarios en el mismo directorio que el script del programa.
 
-	3. Ejecute el script en su entorno de Python:
+3. Ejecute el script en su entorno de Python:
 
 	python <nombre_del_script>.py
 
-	4. Use la interfaz gráfica para seleccionar las rejillas y variables que desea analizar.
+4. Use la interfaz gráfica para seleccionar las rejillas y variables que desea analizar.
 
-	5. Haga clic en el botón para generar métricas y gráficos. Los resultados se guardarán en archivos CSV y PNG en el directorio actual.
+5. Haga clic en el botón para generar métricas y gráficos. Los resultados se guardarán en archivos CSV y PNG en el directorio actual.
 
 
 Archivos Requeridos
@@ -30,9 +30,9 @@ Archivos netCDF para las Rejillas
 
 Los archivos netCDF deben estar nombrados y formateados de la siguiente manera:
 
-    Formato de nombre de archivo: grid_data_<GRID>_<VARIABLE>.nc
-        <GRID>: Nombre de la rejilla (por ejemplo, ISIMIP-CHELSA, CHIRTS, CHIRPS, ERA5, ERA5-Land)
-        <VARIABLE>: Nombre de la variable climática (por ejemplo, temperature, maximum_temperature, minimum_temperature, precipitation)
+Formato de nombre de archivo: grid_data_<GRID>_<VARIABLE>.nc
+<GRID>: Nombre de la rejilla (por ejemplo, ISIMIP-CHELSA, CHIRTS, CHIRPS, ERA5, ERA5-Land)
+<VARIABLE>: Nombre de la variable climática (por ejemplo, temperature, maximum_temperature, minimum_temperature, precipitation)
 
 Ejemplos:
 
@@ -46,8 +46,8 @@ Archivos CSV para los Datos de las Estaciones
 
 Los archivos CSV deben estar nombrados y formateados de la siguiente manera:
 
-    Formato de nombre de archivo: stations_data_<VARIABLE>.csv
-        <VARIABLE>: Nombre de la variable climática (por ejemplo, temperature, maximum_temperature, minimum_temperature, precipitation)
+Formato de nombre de archivo: stations_data_<VARIABLE>.csv
+	<VARIABLE>: Nombre de la variable climática (por ejemplo, temperature, maximum_temperature, minimum_temperature, precipitation)
 
 Ejemplos:
 
@@ -66,29 +66,29 @@ El archivo CSV debe contener las siguientes columnas:
     date: Fecha de la observación (en formato YYYY-MM-DD comenzando en 1991-01-01)
     <VARIABLE>: Valor observado de la variable climática (por ejemplo, temperature, maximum_temperature, minimum_temperature, precipitation)
 
-	Las filas deben ordenarse primero por estación (station_id) y después por fecha (date).
+Las filas deben ordenarse primero por estación (station_id) y después por fecha (date).
 
 Ejemplo de contenido de stations_data_temperature.csv:
 
-station_id,latitude,longitude,date,temperature
-1,35.6895,139.6917,1991-01-01,25.0
-1,35.6895,139.6917,1991-01-02,25.7
-1,35.6895,139.6917,1991-01-03,29.0
-1,35.6895,139.6917,1991-01-04,22.6
-1,35.6895,139.6917,1991-01-05,23.1
-1,35.6895,139.6917,1991-01-06,25.4
-...
-2,34.0522,118.2437,1991-01-01,10.0
-2,34.0522,118.2437,1991-01-02,15.0
-2,34.0522,118.2437,1991-01-03,17.9
-2,34.0522,118.2437,1991-01-04,10.0
-2,34.0522,118.2437,1991-01-05,24.5
-2,34.0522,118.2437,1991-01-06,21.3
-...
-3,51.5074,-0.1278,1991-01-01,27.0
-3,51.5074,-0.1278,1991-01-02,29.1
-3,51.5074,-0.1278,1991-01-03,18.5
-...
+	station_id,latitude,longitude,date,temperature
+	1,35.6895,139.6917,1991-01-01,25.0
+	1,35.6895,139.6917,1991-01-02,25.7
+	1,35.6895,139.6917,1991-01-03,29.0
+	1,35.6895,139.6917,1991-01-04,22.6
+	1,35.6895,139.6917,1991-01-05,23.1
+	1,35.6895,139.6917,1991-01-06,25.4
+	...
+	2,34.0522,118.2437,1991-01-01,10.0
+	2,34.0522,118.2437,1991-01-02,15.0
+	2,34.0522,118.2437,1991-01-03,17.9
+	2,34.0522,118.2437,1991-01-04,10.0
+	2,34.0522,118.2437,1991-01-05,24.5
+	2,34.0522,118.2437,1991-01-06,21.3
+	...
+	3,51.5074,-0.1278,1991-01-01,27.0
+	3,51.5074,-0.1278,1991-01-02,29.1
+	3,51.5074,-0.1278,1991-01-03,18.5
+	...
 
 
 Descripción del Programa
