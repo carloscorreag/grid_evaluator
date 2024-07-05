@@ -5,11 +5,11 @@ Este programa está diseñado para calcular métricas de diferencias y generar g
 # Requisitos del Sistema
 
     Python 3.x
-    Bibliotecas: tkinter, netCDF4, pandas, numpy, seaborn, matplotlib, scipy
+    Librerías: tkinter, netCDF4, pandas, numpy, seaborn, matplotlib, scipy
 
 # Instrucciones de Uso
 
-1. Asegúrese de tener instaladas las bibliotecas necesarias: 
+1. Asegúrese de tener instaladas las librerías necesarias: 
 
 		pip install tkinter netCDF4 pandas numpy seaborn matplotlib scipy
 
