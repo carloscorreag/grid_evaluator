@@ -98,9 +98,9 @@ Ejemplo de contenido de stations_data_temperature.csv:
 
 # Descripción del Programa
 
-El programa carga los datos de las rejillas desde archivos netCDF y los datos de las estaciones desde archivos CSV. Luego, calcula métricas de diferencia entre los valores interpolados de las rejillas y los valores observados en las estaciones. Las métricas calculadas incluyen sesgo medio, error absoluto medio, RMSE, correlación, sesgo de varianza, y otros.
+El programa carga los datos de las rejillas desde archivos netCDF y los datos de las estaciones desde archivos CSV. Luego, calcula métricas de diferencia entre los valores interpolados de las rejillas y los valores observados en las estaciones. Las métricas calculadas incluyen sesgo medio, error absoluto medio, sesgo en percentiles, RMSE, coeficiente de correlación, sesgo de varianza y otros.
 
-Las métricas calculadas se guardan en archivos CSV y los gráficos de comparación se guardan en archivos PNG.
+Las métricas calculadas se guardan en archivos CSV y los gráficos de comparación tipo Boxplots se guardan en archivos PNG.
 
 Advertencia: el programa dará error si se intenta comparar rejillas para una variable que no contienen. Por ejemplo, si el usuario/a selecciona las rejillas 'ISIMIP-CHELSA' y 'CHIRTS', y selecciona como variable 'precipitation', el programa dará error en tanto que 'CHIRTS' no contiene información de la variable 'precipitation'.
 
