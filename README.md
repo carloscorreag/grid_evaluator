@@ -50,8 +50,9 @@ Ejemplos:
 
 Los archivos CSV deben estar nombrados y formateados de la siguiente manera:
 
-Formato de nombre de archivo: stations_data_<VARIABLE>.csv
-	VARIABLE: Nombre de la variable climática (por ejemplo, temperature, maximum_temperature, minimum_temperature, precipitation)
+Formato de nombre de archivo: stations_data_VARIABLE.csv
+
+VARIABLE: Nombre de la variable climática (por ejemplo, temperature, maximum_temperature, minimum_temperature, precipitation)
 
 Ejemplos:
 
