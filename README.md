@@ -13,7 +13,7 @@ Este programa está diseñado para calcular métricas de diferencias y generar g
 
 		pip install tkinter netCDF4 pandas numpy seaborn matplotlib scipy
 
-2. Coloque los archivos necesarios en el mismo directorio que el script del programa.
+2. Coloque los archivos de entrada necesarios en el mismo directorio que el script del programa.
 
 3. Ejecute el script en su entorno de Python:
 
@@ -24,7 +24,7 @@ Este programa está diseñado para calcular métricas de diferencias y generar g
 5. Haga clic en el botón para generar métricas y gráficos. Los resultados se guardarán en archivos CSV y PNG en el directorio actual.
 
 
-# Archivos Requeridos
+# Archivos de Entrada Requeridos
 
 1. Archivos netCDF para las Rejillas
 
