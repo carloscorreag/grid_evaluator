@@ -17,7 +17,7 @@ Este programa está diseñado para calcular métricas de diferencias y generar g
 
 		conda create -n grid_evaluator tk netCDF4 pandas numpy seaborn matplotlib scip
 
-   Nota: en Conda el paquete tkinter se llama tk.
+   Nótese que en Conda el paquete tkinter se llama tk.
 
 3. Coloque los archivos de entrada necesarios en el mismo directorio que el script del programa.
 
