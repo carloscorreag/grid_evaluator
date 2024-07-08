@@ -13,7 +13,7 @@ Este programa está diseñado para calcular métricas de diferencias y generar g
 
 		pip install tkinter netCDF4 pandas numpy seaborn matplotlib scipy
 
-   En caso de utilizar Conda sustituir la línea de código de instalación anterior por:
+   En caso de utilizar Conda, sustituya la línea de código de instalación anterior por:
 
 		conda create -n grid_evaluator tk netCDF4 pandas numpy seaborn matplotlib scip
 
