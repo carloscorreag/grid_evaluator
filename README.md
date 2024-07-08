@@ -13,15 +13,19 @@ Este programa está diseñado para calcular métricas de diferencias y generar g
 
 		pip install tkinter netCDF4 pandas numpy seaborn matplotlib scipy
 
-2. Coloque los archivos de entrada necesarios en el mismo directorio que el script del programa.
+   En caso de utilizar Conda sustituir la línea de código de instalación anterior por:
 
-3. Ejecute el script en su entorno de Python:
+		conda create -n grid_evaluator tk netCDF4 pandas numpy seaborn matplotlib scip
+
+3. Coloque los archivos de entrada necesarios en el mismo directorio que el script del programa.
+
+4. Ejecute el script en su entorno de Python:
 
 		python3 grid_evaluator_gui.py
 
-4. Use la interfaz gráfica para seleccionar las rejillas y variables que desea analizar (tenga en cuenta que algunas rejillas solo contemplan algunas variables).
+5. Use la interfaz gráfica para seleccionar las rejillas y variables que desea analizar (tenga en cuenta que algunas rejillas solo contemplan algunas variables).
 
-5. Haga clic en el botón para generar métricas y gráficos. Los resultados se guardarán en archivos CSV y PNG en el directorio actual.
+6. Haga clic en el botón para generar métricas y gráficos. Los resultados se guardarán en archivos CSV y PNG en el directorio actual.
 
 
 # Archivos de Entrada Requeridos
