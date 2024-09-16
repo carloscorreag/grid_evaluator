@@ -75,7 +75,7 @@ El archivo CSV debe contener las siguientes columnas:
     latitude: Latitud de la estación
     longitude: Longitud de la estación
     date: Fecha de la observación (en formato YYYY-MM-DD comenzando en 1991-01-01)
-    VARIABLE: Valor observado de la variable climática (por ejemplo, temperature, maximum_temperature, minimum_temperature, precipitation)
+    VARIABLE: Valor observado de la variable climática (por ejemplo, temperature, maximum_temperature, minimum_temperature, precipitation). La precipitación debe expresarse en mm y las temperaturas en grados Celsius.
 
 Las filas deben ordenarse primero por estación (station_id) y después por fecha (date).
 
