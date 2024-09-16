@@ -9,14 +9,20 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import RegularGridInterpolator
 from scipy.stats import pearsonr, spearmanr
 
+def variables_name_nc(f_path):
+	# leer el NetCDF file en modo lectura
+	with nc.Dataset(f_path, 'r') as file:
+		 # Obtener los nombres de las variables del fichero
+		variable_names = list(file.variables.keys())
+	return variable_names
 
 def generate_metrics_and_plots(selected_grids, selected_variable):
 	print('Selected grids: ' + str(selected_grids))
 	print('Selected variable: ' + selected_variable)
 
-	# Crear un DataFrame vacío para almacenar las métricas de todos los grids
+	# Crear un DataFrame vacío para almacenar las métricas de todos las rejillas
 	all_metrics = pd.DataFrame()
-
+	
 	for grid in selected_grids:
 		# Cargar datos de la rejilla (ISIMIP-CHELSA, CHIRTS, CHIRPS, ERA5 y ERA5-land) usando netCDF4
 		try:
@@ -33,127 +39,30 @@ def generate_metrics_and_plots(selected_grids, selected_variable):
 			print('Error - file no found: stations_data_' + selected_variable + '.csv')
 			exit()
 		# Definir nombres de variables
-		if grid == 'ISIMIP-CHELSA':
-			if selected_variable == 'temperature':
-				targetvar = 'tas'
-				targetlat = 'lat'
-				targetlon = 'lon'
-				targettime = 'time'
-			elif selected_variable == 'maximum_temperature':
-				targetvar = 'tasmax'
-				targetlat = 'lat'
-				targetlon = 'lon'
-				targettime = 'time'
-			elif selected_variable == 'minimum_temperature':
-				targetvar = 'tasmin'
-				targetlat = 'lat'
-				targetlon = 'lon'
-				targettime = 'time'
-			elif selected_variable == 'precipitation':
-				targetvar = 'pr'
-				targetlat = 'lat'
-				targetlon = 'lon'
-				targettime = 'time'
-			else:
-				print(f'Error: {selected_variable} not found in grid {grid}')
-				continue
-
-		elif grid == 'CHIRTS':
-			if selected_variable == 'maximum_temperature':
-				targetvar = 'Tmax'
-				targetlat = 'latitude'
-				targetlon = 'longitude'
-				targettime = 'time'
-			elif selected_variable == 'minimum_temperature':
-				targetvar = 'Tmin'
-				targetlat = 'latitude'
-				targetlon = 'longitude'
-				targettime = 'time'
-			else:
-				print(f'Error: {selected_variable} not found in grid {grid}')
-				continue
-
-		elif grid == 'CHIRPS':
-			if selected_variable == 'precipitation':
-				targetvar = 'precip'
-				targetlat = 'latitude'
-				targetlon = 'longitude'
-				targettime = 'time'
-			else:
-				print(f'Error: {selected_variable} not found in grid {grid}')
-				continue
-
-		elif grid == 'ERA5':
-			if selected_variable == 'temperature':
-				targetvar = '2t'
-				targetlat = 'lat'
-				targetlon = 'lon'
-				targettime = 'time'
-			elif selected_variable == 'maximum_temperature':
-				targetvar = 'mx2t'
-				targetlat = 'lat'
-				targetlon = 'lon'
-				targettime = 'time'
-			elif selected_variable == 'minimum_temperature':
-				targetvar = 'mn2t'
-				targetlat = 'lat'
-				targetlon = 'lon'
-				targettime = 'time'
-			elif selected_variable == 'precipitation':
-				targetvar = 'tp'
-				targetlat = 'lat'
-				targetlon = 'lon'
-				targettime = 'time'
-			else:
-				print(f'Error: {selected_variable} not found in grid {grid}')
-				continue
-
-		elif grid == 'ERA5-Land':
-			if selected_variable == 'temperature':
-				targetvar = '2t'
-				targetlat = 'lat'
-				targetlon = 'lon'
-				targettime = 'time'
-			elif selected_variable == 'maximum_temperature':
-				targetvar = 'mx2t'
-				targetlat = 'lat'
-				targetlon = 'lon'
-				targettime = 'time'
-			elif selected_variable == 'minimum_temperature':
-				targetvar = 'mn2t'
-				targetlat = 'lat'
-				targetlon = 'lon'
-				targettime = 'time'
-			elif selected_variable == 'precipitation':
-				targetvar = 'tp'
-				targetlat = 'lat'
-				targetlon = 'lon'
-				targettime = 'time'
-			else:
-				print(f'Error: {selected_variable} not found in grid {grid}')
-				continue
-
-		else:
-			if selected_variable == 'temperature':
-				targetvar = 'temperature'
-				targetlat = 'lat'
-				targetlon = 'lon'
-				targettime = 'time'
-			elif selected_variable == 'precipitation':
-				targetvar = 'precipitation'
-				targetlat = 'lat'
-				targetlon = 'lon'
-				targettime = 'time'
-			else:
-				print(f'Error: {selected_variable} not found in grid {grid}')
-				continue
+		names = variables_name_nc(grid_file)
+		targetvar = names[-1]
+		targetlat = [string for string in names if 'lat' in string][0]
+		targetlon = [string for string in names if 'lon' in string][0]
+		targettime = [string for string in names if string == 'time'][0]
 		
-		# Variables dentro del archivo netCDF (los nombres habrá que adaptarlos en función de la rejilla, en este ejemplo la variable climática es temperatura)
+		# Variables dentro del archivo netCDF y convesrión de las unidades
 		grid_lat = grid_data.variables[targetlat][:]
 		grid_lon = grid_data.variables[targetlon][:]
 		grid_time = grid_data.variables[targettime][:]
-		grid_targetvar = grid_data.variables[targetvar][:]
-
+		if selected_variable in ['temperature', 'maximum_temperature', 'minimum_temperature'] and grid != 'CHIRTS':
+			grid_targetvar = grid_data.variables[targetvar][:] - 273.15 # convierte grados Kelvin a grados Celsius
+		elif selected_variable in ['temperature', 'maximum_temperature', 'minimum_temperature'] and grid == 'CHIRTS':
+			grid_targetvar = grid_data.variables[targetvar][:] # mantiene las unidades en grados Celsius
+		elif selected_variable == 'precipitation' and grid != 'CHIRPS' and grid != 'ISIMIP-CHELSA':
+			grid_targetvar = grid_data.variables[targetvar][:]*1000 # convierte m/día a mm/día
+		elif selected_variable == 'precipitation' and grid == 'CHIRPS':
+			grid_targetvar = grid_data.variables[targetvar][:] # mantiene las unidades en mm/día
+		elif selected_variable == 'precipitation' and grid == 'ISIMIP-CHELSA':
+			grid_targetvar = grid_data.variables[targetvar][:]*86400 # convierte kg m²/s a mm/día
+		else:
+			print('Error - units')
+			exit()
+			
 		# Función para convertir fechas a índices de tiempo en la rejilla 
 		def convert_time_to_index(time_array, date):
 			time_num = nc.date2num(date, units='days since 1991-01-01 00:00:00', calendar='standard')
@@ -384,7 +293,7 @@ def generate_metrics_and_plots(selected_grids, selected_variable):
 def on_generate_button_click():
     selected_variables = [combo_variable.get()]
     selected_grids = listbox_grids.curselection()
-    selected_grids = [grids2[i] for i in selected_grids]
+    selected_grids = [grids[i] for i in selected_grids]
     generate_metrics_and_plots(selected_grids, selected_variables[0])
 
 
@@ -396,9 +305,9 @@ variables = [
     'precipitation',
 ]
 
-# Lista de grids y variables disponibles
+# Lista de rejillas y variables disponibles
 
-grids2 = [
+grids = [
     'ISIMIP-CHELSA',
     'CHIRTS',
     'CHIRPS',
@@ -416,11 +325,11 @@ label_variable.pack(pady=10)
 combo_variable = ttk.Combobox(root, values=variables)
 combo_variable.pack()
 
-# Etiqueta y Listbox para seleccionar los grids
+# Etiqueta y Listbox para seleccionar las rejillas
 label_grids = ttk.Label(root, text='Select Grids:')
 label_grids.pack(pady=10)
 listbox_grids = tk.Listbox(root, selectmode=tk.MULTIPLE, exportselection=0)
-for grid in grids2:
+for grid in grids:
     listbox_grids.insert(tk.END, grid)
 listbox_grids.pack()
 
