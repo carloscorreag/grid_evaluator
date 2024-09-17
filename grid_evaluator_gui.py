@@ -50,7 +50,7 @@ def generate_metrics_and_plots(selected_grids, selected_variable):
 		grid_lon = grid_data.variables[targetlon][:]
 		grid_time = grid_data.variables[targettime][:]
 		if selected_variable in ['temperature', 'maximum_temperature', 'minimum_temperature'] and grid != 'CHIRTS':
-			grid_targetvar = grid_data.variables[targetvar][:] #- 273.15 # convierte grados Kelvin a grados Celsius
+			grid_targetvar = grid_data.variables[targetvar][:] - 273.15 # convierte grados Kelvin a grados Celsius
 		elif selected_variable in ['temperature', 'maximum_temperature', 'minimum_temperature'] and grid == 'CHIRTS':
 			grid_targetvar = grid_data.variables[targetvar][:] # mantiene las unidades en grados Celsius
 		elif selected_variable == 'precipitation' and grid != 'CHIRPS' and grid != 'ISIMIP-CHELSA':
