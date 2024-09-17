@@ -8,6 +8,9 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from scipy.interpolate import RegularGridInterpolator
 from scipy.stats import pearsonr, spearmanr
+import warnings
+# Desactivar todos los warnings
+warnings.filterwarnings('ignore')
 
 def variables_name_nc(f_path):
 	# leer el NetCDF file en modo lectura
@@ -19,9 +22,6 @@ def variables_name_nc(f_path):
 def generate_metrics_and_plots(selected_grids, selected_variable):
 	print('Selected grids: ' + str(selected_grids))
 	print('Selected variable: ' + selected_variable)
-
-	# Crear un DataFrame vacío para almacenar las métricas de todos las rejillas
-	all_metrics = pd.DataFrame()
 	
 	for grid in selected_grids:
 		# Cargar datos de la rejilla (ISIMIP-CHELSA, CHIRTS, CHIRPS, ERA5 y ERA5-land) usando netCDF4
@@ -45,12 +45,12 @@ def generate_metrics_and_plots(selected_grids, selected_variable):
 		targetlon = [string for string in names if 'lon' in string][0]
 		targettime = [string for string in names if string == 'time'][0]
 		
-		# Variables dentro del archivo netCDF y convesrión de las unidades
+		# Variables dentro del archivo netCDF y conversión de las unidades
 		grid_lat = grid_data.variables[targetlat][:]
 		grid_lon = grid_data.variables[targetlon][:]
 		grid_time = grid_data.variables[targettime][:]
 		if selected_variable in ['temperature', 'maximum_temperature', 'minimum_temperature'] and grid != 'CHIRTS':
-			grid_targetvar = grid_data.variables[targetvar][:] - 273.15 # convierte grados Kelvin a grados Celsius
+			grid_targetvar = grid_data.variables[targetvar][:] #- 273.15 # convierte grados Kelvin a grados Celsius
 		elif selected_variable in ['temperature', 'maximum_temperature', 'minimum_temperature'] and grid == 'CHIRTS':
 			grid_targetvar = grid_data.variables[targetvar][:] # mantiene las unidades en grados Celsius
 		elif selected_variable == 'precipitation' and grid != 'CHIRPS' and grid != 'ISIMIP-CHELSA':
@@ -237,20 +237,44 @@ def generate_metrics_and_plots(selected_grids, selected_variable):
 			print(f'Error: variable {selected_variable} no contemplada para el cálculo de métricas.')
 			continue
 
-
-
-	# Crear un DataFrame vacío para almacenar todas las métricas
-	all_metrics = pd.DataFrame()
+		# Calcular el ciclo anual
+		
+		dfac = stations_data
+		dfac['month'] = dfac['date'].dt.month
+		dfac['interpolated_grid_value'] = dfac['interpolated_grid_value'].astype(float)
+		# Agrupar por mes y calcular el ciclo anual promediando con todas las estaciones observacionales
+		if selected_variable != 'precipitation':
+			monthly_avg = dfac.groupby('month').agg({
+				selected_variable: 'mean',
+				'interpolated_grid_value': 'mean'
+			}).reset_index()
+		else:
+			monthly_avg = dfac.groupby('month').agg({
+				selected_variable: 'sum',
+				'interpolated_grid_value': 'sum'
+			}).reset_index()
+			
+			columns_to_divide = [selected_variable, 'interpolated_grid_value']
+			monthly_avg[columns_to_divide] = monthly_avg[columns_to_divide] / stations_data['station_id'].nunique() 
+		monthly_avg.to_csv(selected_variable + '_' + grid + '_annual_cycle_comparison.csv', index=False)
+		
 
 	# Diccionario para almacenar los datos de métricas
 	metrics_data_dict = {}
+	# Diccionario para almacenar los datos del ciclo anual
+	annual_cycle_dict = {}
 
 	# Cargar las métricas de cada grid desde los CSV
 	for grid in selected_grids:  
 		file_name = f'metrics_per_station_interpolated_{grid}_{selected_variable}.csv'
+		file_name_annual_cycle = selected_variable + '_' + grid + '_annual_cycle_comparison.csv'
 		try:
 			metrics_data = pd.read_csv(file_name)
 			metrics_data_dict[grid] = metrics_data
+			
+			annual_cycle_data = pd.read_csv(file_name_annual_cycle)
+			annual_cycle_dict[grid] = annual_cycle_data 
+			
 		except FileNotFoundError:
 			print(f'Warning: No metrics file found for {grid} and {selected_variable}')
 
@@ -289,14 +313,33 @@ def generate_metrics_and_plots(selected_grids, selected_variable):
 		print(f'{selected_variable}_{metric}_grids_comparison.png has been saved')
 		plt.close()
 		#plt.show()
-    
+ 
+	# Graficar el ciclo anual
+	plt.figure(figsize=(12, 6))
+	plt.plot(annual_cycle_dict[grid]['month'], annual_cycle_dict[grid][selected_variable], label= 'observations', marker='o')
+	for grid in selected_grids:
+		plt.plot(annual_cycle_dict[grid]['month'], annual_cycle_dict[grid]['interpolated_grid_value'], label= grid, marker='o')
+	# Configurar el gráfico
+	plt.xlabel('Month')
+	if selected_variable != 'precipitation':
+		plt.ylabel(selected_variable + ' (°C)')
+	else:
+		plt.ylabel(selected_variable + ' (mm)')
+	plt.title('Average Annual Cycle')
+	# Etiquetas de los meses abreviados en inglés
+	months_abbr = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+	# Usar plt.xticks() para asignar etiquetas de texto a los meses
+	plt.xticks(annual_cycle_dict[grid]['month'], months_abbr)
+	plt.legend()
+	plt.savefig(f'{selected_variable}_annual_cycle_grids_comparison.png')
+	print(f'{selected_variable}_annual_cycle_grids_comparison.png has been saved')
+	
+	
 def on_generate_button_click():
     selected_variables = [combo_variable.get()]
     selected_grids = listbox_grids.curselection()
     selected_grids = [grids[i] for i in selected_grids]
     generate_metrics_and_plots(selected_grids, selected_variables[0])
-
-
 
 variables = [
     'temperature',
