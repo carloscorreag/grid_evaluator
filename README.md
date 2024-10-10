@@ -25,7 +25,7 @@ Este programa está diseñado para calcular métricas de diferencias y generar g
 
 		python3 grid_evaluator_gui.py
 
-5. Use la interfaz gráfica para seleccionar las rejillas y variables que desea analizar (tenga en cuenta que algunas rejillas solo contemplan algunas variables).
+5. Use la interfaz gráfica para seleccionar las rejillas y variables que desea analizar (tenga en cuenta que algunas rejillas solo contemplan algunas variables). La interfaz también permite seleccionar el periodo a evaluar.
 
 6. Haga clic en el botón para generar métricas y gráficos. Los resultados se guardarán en archivos CSV y PNG en el directorio actual.
 
@@ -74,7 +74,7 @@ El archivo CSV debe contener las siguientes columnas:
     station_id: Identificador de la estación
     latitude: Latitud de la estación
     longitude: Longitud de la estación
-    date: Fecha de la observación (en formato YYYY-MM-DD comenzando en 1991-01-01)
+    date: Fecha de la observación (en formato YYYY-MM-DD)
     VARIABLE: Valor observado de la variable climática (por ejemplo, temperature, maximum_temperature, minimum_temperature, precipitation). La precipitación debe expresarse en mm y las temperaturas en grados Celsius.
 
 Las filas deben ordenarse primero por estación (station_id) y después por fecha (date).
