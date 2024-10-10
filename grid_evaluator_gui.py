@@ -12,6 +12,7 @@ import warnings
 # Desactivar todos los warnings
 warnings.filterwarnings('ignore')
 
+#Función para obtener los nombres de las variables del netCDF
 def variables_name_nc(f_path):
 	# leer el NetCDF file en modo lectura
 	with nc.Dataset(f_path, 'r') as file:
@@ -19,38 +20,59 @@ def variables_name_nc(f_path):
 		variable_names = list(file.variables.keys())
 	return variable_names
 
-def generate_metrics_and_plots(selected_grids, selected_variable):
+# Función para obtener el periodo de tiempo
+def get_time_period(start_year, end_year):
+	return int(start_year), int(end_year)
+
+#Función para generar las métricas y las figuras
+def generate_metrics_and_plots(selected_grids, selected_variable, start_year, end_year):
 	print('Selected grids: ' + str(selected_grids))
 	print('Selected variable: ' + selected_variable)
+	print(f'Selected period: {start_year} - {end_year}')
 	
+	# Cargar datos de estaciones (archivo de ejemplo 'stations_data.csv')
+	print('loading stations CSV data...')
+	try:
+		stations_data_0 = pd.read_csv('stations_data_' + selected_variable + '.csv')
+		stations_data_0['date'] = pd.to_datetime(stations_data_0['date'])
+		# Filtrar por el periodo especificado
+		stations_data_0 = stations_data_0[(stations_data_0['date'].dt.year >= start_year) & (stations_data_0['date'].dt.year <= end_year)]
+		stations_data_0 = stations_data_0.dropna()
+		#print(stations_data_0)
+		
+	except FileNotFoundError:
+		print(f'Error - file not found: stations_data_{selected_variable}.csv')
+		exit()
+		
 	for grid in selected_grids:
+		stations_data = stations_data_0 # se crea un nuevo dataframe que contiene los datos de las estaciones del CSV 
 		# Cargar datos de la rejilla (ISIMIP-CHELSA, CHIRTS, CHIRPS, ERA5 y ERA5-land) usando netCDF4
+		print(grid)
+		print('loading netCDF grid data...')
+		
 		try:
-			grid_file = 'grid_data_' + grid + '_' + selected_variable + '.nc'	
+			grid_file = 'grid_data_' + grid + '_' + selected_variable + '.nc'
 			grid_data = nc.Dataset(grid_file)
+
 		except:
 			print('Error - file no found: grid_data_' + grid + '_' + selected_variable + '.nc')
 			exit()
-		# Cargar datos de estaciones (archivo de ejemplo 'stations_data.csv')
-		try:
-			stations_data = pd.read_csv('stations_data_' + selected_variable + '.csv')
-			stations_data['date'] = pd.to_datetime(stations_data['date'])
-		except:
-			print('Error - file no found: stations_data_' + selected_variable + '.csv')
-			exit()
+			          
 		# Definir nombres de variables
 		names = variables_name_nc(grid_file)
 		targetvar = names[-1]
 		targetlat = [string for string in names if 'lat' in string][0]
 		targetlon = [string for string in names if 'lon' in string][0]
 		targettime = [string for string in names if string == 'time'][0]
-		
+
 		# Variables dentro del archivo netCDF y conversión de las unidades
 		grid_lat = grid_data.variables[targetlat][:]
 		grid_lon = grid_data.variables[targetlon][:]
 		grid_time = grid_data.variables[targettime][:]
+		units = grid_data.variables[targettime].units
+
 		if selected_variable in ['temperature', 'maximum_temperature', 'minimum_temperature'] and grid != 'CHIRTS':
-			grid_targetvar = grid_data.variables[targetvar][:] - 273.15 # convierte grados Kelvin a grados Celsius
+			grid_targetvar = grid_data.variables[targetvar][:] #- 273.15 # convierte grados Kelvin a grados Celsius
 		elif selected_variable in ['temperature', 'maximum_temperature', 'minimum_temperature'] and grid == 'CHIRTS':
 			grid_targetvar = grid_data.variables[targetvar][:] # mantiene las unidades en grados Celsius
 		elif selected_variable == 'precipitation' and grid != 'CHIRPS' and grid != 'ISIMIP-CHELSA':
@@ -58,21 +80,23 @@ def generate_metrics_and_plots(selected_grids, selected_variable):
 		elif selected_variable == 'precipitation' and grid == 'CHIRPS':
 			grid_targetvar = grid_data.variables[targetvar][:] # mantiene las unidades en mm/día
 		elif selected_variable == 'precipitation' and grid == 'ISIMIP-CHELSA':
-			grid_targetvar = grid_data.variables[targetvar][:]*86400 # convierte kg m²/s a mm/día
+			grid_targetvar = grid_data.variables[targetvar][:]*86400 # convierte kg/m²s a mm/día
 		else:
 			print('Error - units')
 			exit()
-			
+
 		# Función para convertir fechas a índices de tiempo en la rejilla 
 		def convert_time_to_index(time_array, date):
-			time_num = nc.date2num(date, units='days since 1991-01-01 00:00:00', calendar='standard')
+			time_num = nc.date2num(date, units=units, calendar='standard')#'days since 1991-01-01 00:00:00', calendar='standard')
 			time_idx = np.interp(time_num, time_array, np.arange(len(time_array)))
 			return time_idx
 
-		# Crear el interpolador para los datos de la rejilla (solo local alrededor de la estación para ganar eficiencia computacional)
+		
+		# Crear el interpolador para los datos de la rejilla 
 		def create_interpolator(targetvar_data, lat_array, lon_array, lat_station, lon_station):
 			lat_idx = np.abs(lat_array - lat_station).argmin()
 			lon_idx = np.abs(lon_array - lon_station).argmin()
+			#print("Valores de variable en el dataset original en torno al punto de interés:", grid_targetvar[:, lat_idx-1:lat_idx+2, lon_idx-1:lon_idx+2])
 			# Definir rangos para interpolación local
 			lat_range = lat_array[max(0, lat_idx-1):min(len(lat_array), lat_idx+2)]
 			lon_range = lon_array[max(0, lon_idx-1):min(len(lon_array), lon_idx+2)]
@@ -81,42 +105,39 @@ def generate_metrics_and_plots(selected_grids, selected_variable):
 			return RegularGridInterpolator(
 				(np.arange(len(grid_time)), lat_range, lon_range), 
 				targetvar_range,
+				method='nearest',
 				bounds_error=False,
-				fill_value=None
+				fill_value=np.nan
 			)
 
-		# Función para extraer valores interpolados de la rejilla para las ubicaciones y fechas de las estaciones
+		# Función para extraer valores interpolados de la rejilla para las ubicaciones y fechas de las estaciones 
 		def extract_interpolated_grid_value(lat, lon, date):
-			interpolator = create_interpolator(grid_targetvar, grid_lat, grid_lon, lat, lon)
 			time_idx = convert_time_to_index(grid_time, date)
-			return interpolator((time_idx, lat, lon))
-			
-		
-		# Función para extraer valores interpolados de la rejilla para las ubicaciones y fechas de las estaciones
-		def extract_interpolated_grid_value_precip(lat, lon, date):
 			interpolator = create_interpolator(grid_targetvar, grid_lat, grid_lon, lat, lon)
-			time_idx = convert_time_to_index(grid_time, date)
 			interpolated_value = interpolator((time_idx, lat, lon))
-			# Asegurar que el valor interpolado de precipitación no sea negativo
-			return max(0, interpolated_value)
-
-		# Aplica la extracción a cada fila del DataFrame de estaciones usando la interpolación local
+			return interpolated_value
+			
+		print('data loaded')
 		
-		if selected_variable in ['temperature', 'maximum_temperature', 'minimum_temperature']:
-			stations_data['interpolated_grid_value'] = stations_data.apply(
-				lambda row: extract_interpolated_grid_value(row['latitude'], row['longitude'], row['date']),
-				axis=1
-			)
-		else: 
-			stations_data['interpolated_grid_value'] = stations_data.apply(
-				lambda row: extract_interpolated_grid_value_precip(row['latitude'], row['longitude'], row['date']),
-				axis=1
-			)
-
+		# Aplica la extracción a cada fila del DataFrame de estaciones usando la interpolación local
+		print('interpolating...')
+		print('please wait')
+		stations_data['interpolated_grid_value'] = stations_data.apply(
+			lambda row: extract_interpolated_grid_value(row['latitude'], row['longitude'], row['date']),
+			axis=1
+		)
+		
 		# Calcular diferencias y métricas
+		#print(stations_data[~stations_data['interpolated_grid_value'].apply(lambda x: isinstance(x, (int, float)))])
+		#print(stations_data[~stations_data[selected_variable].apply(lambda x: isinstance(x, (int, float)))])
+		stations_data['interpolated_grid_value'] = pd.to_numeric(stations_data['interpolated_grid_value'], errors='coerce')
+		stations_data[selected_variable] = pd.to_numeric(stations_data[selected_variable], errors='coerce')
+		print('interpolation completed')
+		print('obtaining metrics...')
+		print('please wait')
 		stations_data_accu_ini = stations_data
 		stations_data['difference_interpolated'] = stations_data['interpolated_grid_value'] - stations_data[selected_variable] 
-
+		
 		def calculate_metrics_interpolated_temp(data):
 			data = data.dropna()  # Eliminar filas con NaN si es necesario
 			if len(data) < 2:
@@ -228,7 +249,7 @@ def generate_metrics_and_plots(selected_grids, selected_variable):
 			metrics_per_station_accumulated = accumulated_precipitation.groupby('station_id').apply(calculate_metrics_accumulated).reset_index()
 			
 			# Guardar métricas para cada estación en un csv
-			metrics_per_station_interpolated['Number of wet days Bias'] = metrics_per_station_accumulated['Number of wet days Bias']
+			metrics_per_station_interpolated['Number of wet days Bias'] = metrics_per_station_accumulated['Number of wet days Bias'] / (stations_data['date'].nunique() / 365)
 
 			metrics_per_station_interpolated.to_csv('metrics_per_station_interpolated_' + grid + '_' + selected_variable + '.csv', index=False)
 			print('metrics_per_station_interpolated_' + grid + '_' + selected_variable + '.csv has been saved')
@@ -239,7 +260,7 @@ def generate_metrics_and_plots(selected_grids, selected_variable):
 
 		# Calcular el ciclo anual
 		
-		dfac = stations_data
+		dfac = stations_data.dropna()
 		dfac['month'] = dfac['date'].dt.month
 		dfac['interpolated_grid_value'] = dfac['interpolated_grid_value'].astype(float)
 		# Agrupar por mes y calcular el ciclo anual promediando con todas las estaciones observacionales
@@ -255,10 +276,9 @@ def generate_metrics_and_plots(selected_grids, selected_variable):
 			}).reset_index()
 			
 			columns_to_divide = [selected_variable, 'interpolated_grid_value']
-			monthly_avg[columns_to_divide] = monthly_avg[columns_to_divide] / stations_data['station_id'].nunique() 
+			monthly_avg[columns_to_divide] = monthly_avg[columns_to_divide] / (stations_data['station_id'].nunique() * stations_data['date'].nunique() / 365)
 		monthly_avg.to_csv(selected_variable + '_' + grid + '_annual_cycle_comparison.csv', index=False)
 		
-
 	# Diccionario para almacenar los datos de métricas
 	metrics_data_dict = {}
 	# Diccionario para almacenar los datos del ciclo anual
@@ -299,8 +319,9 @@ def generate_metrics_and_plots(selected_grids, selected_variable):
 
 	# Obtener automáticamente la lista de métricas disponibles
 	metrics_to_plot = metrics_concat.drop(['Grid', 'station_id'], axis=1).columns.tolist()
-
+	
 	# Generar boxplots para cada métrica
+	
 	for metric in metrics_to_plot:
 		plt.figure(figsize=(10, 6))
 		sns.boxplot(data=metrics_concat, x='Grid', y=metric, hue=None, orient='v', dodge=False)
@@ -336,31 +357,29 @@ def generate_metrics_and_plots(selected_grids, selected_variable):
 	
 	
 def on_generate_button_click():
-    selected_variables = [combo_variable.get()]
-    selected_grids = listbox_grids.curselection()
-    selected_grids = [grids[i] for i in selected_grids]
-    generate_metrics_and_plots(selected_grids, selected_variables[0])
+	selected_variables = [combo_variable.get()]
+	selected_grids = listbox_grids.curselection()
+	selected_grids = [grids[i] for i in selected_grids]
+	start_year = entry_start_year.get()
+	end_year = entry_end_year.get()
 
-variables = [
-    'temperature',
-    'maximum_temperature',
-    'minimum_temperature',
-    'precipitation',
-]
+	# Validar entradas de año
+	if not start_year.isdigit() or not end_year.isdigit():
+		messagebox.showerror("Error", "Por favor ingresa años válidos.")
+		return
+	if int(start_year) > int(end_year):
+		messagebox.showerror("Error", "El año de inicio debe ser menor o igual al año de fin.")
+		return
 
-# Lista de rejillas y variables disponibles
+	generate_metrics_and_plots(selected_grids, selected_variables[0], int(start_year), int(end_year))
 
-grids = [
-    'ISIMIP-CHELSA',
-    'CHIRTS',
-    'CHIRPS',
-    'ERA5',
-    'ERA5-Land',
-]
+# Variables y lista de rejillas
+variables = ['temperature', 'maximum_temperature', 'minimum_temperature', 'precipitation']
+grids = ['ISIMIP-CHELSA', 'CHIRTS', 'CHIRPS', 'ERA5', 'ERA5-Land']
 
 # Crear la GUI
 root = tk.Tk()
-root.title('Grid Evaluator ')
+root.title('Grid Evaluator')
 
 # Etiquetas y ComboBox para seleccionar la variable
 label_variable = ttk.Label(root, text='Select Variable:')
@@ -376,8 +395,30 @@ for grid in grids:
     listbox_grids.insert(tk.END, grid)
 listbox_grids.pack()
 
-# Botón para generar métricas y gráficos
-btn_generate = ttk.Button(root, text='Generate Metrics (csv) and Boxplots (png)', command=on_generate_button_click)
-btn_generate.pack(pady=20)
+# Etiquetas y entradas para seleccionar el periodo de tiempo
+label_period = ttk.Label(root, text='Select Period:')
+label_period.pack(pady=10)
 
+frame_period = ttk.Frame(root)
+frame_period.pack(pady=10)
+
+label_start_year = ttk.Label(frame_period, text='Start Year:')
+label_start_year.grid(row=0, column=0, padx=5)
+
+entry_start_year = ttk.Entry(frame_period, width=10)
+entry_start_year.grid(row=0, column=1, padx=5)
+entry_start_year.insert(0, '1991')  # Año de inicio por defecto
+
+label_end_year = ttk.Label(frame_period, text='End Year:')
+label_end_year.grid(row=0, column=2, padx=5)
+
+entry_end_year = ttk.Entry(frame_period, width=10)
+entry_end_year.grid(row=0, column=3, padx=5)
+entry_end_year.insert(0, '2020')  # Año de fin por defecto
+
+# Botón para generar las métricas y gráficos
+generate_button = ttk.Button(root, text='Generate Metrics & Plots', command=on_generate_button_click)
+generate_button.pack(pady=20)
+
+# Iniciar la interfaz gráfica
 root.mainloop()
