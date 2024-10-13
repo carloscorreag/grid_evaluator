@@ -38,7 +38,7 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 		# Filtrar por el periodo especificado
 		stations_data_0 = stations_data_0[(stations_data_0['date'].dt.year >= start_year) & (stations_data_0['date'].dt.year <= end_year)]
 		stations_data_0 = stations_data_0.dropna()
-		#print(stations_data_0)
+		print(stations_data_0)
 		
 	except FileNotFoundError:
 		print(f'Error - file not found: stations_data_{selected_variable}.csv')
@@ -72,19 +72,20 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 		units = grid_data.variables[targettime].units
 
 		if selected_variable in ['temperature', 'maximum_temperature', 'minimum_temperature'] and grid != 'CHIRTS':
-			grid_targetvar = grid_data.variables[targetvar][:] #- 273.15 # convierte grados Kelvin a grados Celsius
+			grid_targetvar = grid_data.variables[targetvar][:].astype('float32') - 273.15 # convierte grados Kelvin a grados Celsius
 		elif selected_variable in ['temperature', 'maximum_temperature', 'minimum_temperature'] and grid == 'CHIRTS':
-			grid_targetvar = grid_data.variables[targetvar][:] # mantiene las unidades en grados Celsius
+			grid_targetvar = grid_data.variables[targetvar][:].astype('float32') # mantiene las unidades en grados Celsius
 		elif selected_variable == 'precipitation' and grid != 'CHIRPS' and grid != 'ISIMIP-CHELSA':
-			grid_targetvar = grid_data.variables[targetvar][:]*1000 # convierte m/día a mm/día
+			grid_targetvar = grid_data.variables[targetvar][:].astype('float32')*1000 # convierte m/día a mm/día
 		elif selected_variable == 'precipitation' and grid == 'CHIRPS':
-			grid_targetvar = grid_data.variables[targetvar][:] # mantiene las unidades en mm/día
+			grid_targetvar = grid_data.variables[targetvar][:].astype('float32') # mantiene las unidades en mm/día
 		elif selected_variable == 'precipitation' and grid == 'ISIMIP-CHELSA':
-			grid_targetvar = grid_data.variables[targetvar][:]*86400 # convierte kg/m²s a mm/día
+			grid_targetvar = grid_data.variables[targetvar][:].astype('float32')*86400 # convierte kg/m²s a mm/día
 		else:
 			print('Error - units')
 			exit()
-
+		grid_data.close() # se cierra el netCDF
+			
 		# Función para convertir fechas a índices de tiempo en la rejilla 
 		def convert_time_to_index(time_array, date):
 			time_num = nc.date2num(date, units=units, calendar='standard')#'days since 1991-01-01 00:00:00', calendar='standard')
@@ -115,6 +116,8 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 			time_idx = convert_time_to_index(grid_time, date)
 			interpolator = create_interpolator(grid_targetvar, grid_lat, grid_lon, lat, lon)
 			interpolated_value = interpolator((time_idx, lat, lon))
+			#print(int(time_idx))
+			#print(interpolated_value)
 			return interpolated_value
 			
 		print('data loaded')
@@ -128,9 +131,11 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 		)
 		
 		# Calcular diferencias y métricas
+		stations_data['interpolated_grid_value'] = stations_data['interpolated_grid_value'].apply(lambda x: x.filled(np.nan) if isinstance(x, np.ma.MaskedArray) else x) # los valores enmascarados se convierten a NaN
+		stations_data = stations_data.dropna() # se eliminan filas con NaN
 		#print(stations_data[~stations_data['interpolated_grid_value'].apply(lambda x: isinstance(x, (int, float)))])
 		#print(stations_data[~stations_data[selected_variable].apply(lambda x: isinstance(x, (int, float)))])
-		stations_data['interpolated_grid_value'] = pd.to_numeric(stations_data['interpolated_grid_value'], errors='coerce')
+		stations_data['interpolated_grid_value'] = pd.to_numeric(stations_data['interpolated_grid_value'], errors='coerce') # todos los valores se convierten a formato numérico
 		stations_data[selected_variable] = pd.to_numeric(stations_data[selected_variable], errors='coerce')
 		print('interpolation completed')
 		print('obtaining metrics...')
@@ -316,6 +321,8 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 	# Eliminar la columna 'level_1' si existe
 	if 'level_1' in metrics_concat.columns:
 		metrics_concat = metrics_concat.drop('level_1', axis=1)
+		
+
 
 	# Obtener automáticamente la lista de métricas disponibles
 	metrics_to_plot = metrics_concat.drop(['Grid', 'station_id'], axis=1).columns.tolist()
