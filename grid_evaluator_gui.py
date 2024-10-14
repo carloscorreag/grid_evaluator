@@ -33,7 +33,7 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 	# Cargar datos de estaciones (archivo de ejemplo 'stations_data.csv')
 	print('loading stations CSV data...')
 	try:
-		stations_data_0 = pd.read_csv('stations_data_' + selected_variable + '.csv')
+		stations_data_0 = pd.read_csv('stations_data_' + selected_variable + '_p81.csv')
 		stations_data_0['date'] = pd.to_datetime(stations_data_0['date'])
 		# Filtrar por el periodo especificado
 		stations_data_0 = stations_data_0[(stations_data_0['date'].dt.year >= start_year) & (stations_data_0['date'].dt.year <= end_year)]
@@ -70,7 +70,7 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 		grid_lon = grid_data.variables[targetlon][:]
 		grid_time = grid_data.variables[targettime][:]
 		units = grid_data.variables[targettime].units
-
+		
 		if selected_variable in ['temperature', 'maximum_temperature', 'minimum_temperature'] and grid != 'CHIRTS':
 			grid_targetvar = grid_data.variables[targetvar][:].astype('float32') - 273.15 # convierte grados Kelvin a grados Celsius
 		elif selected_variable in ['temperature', 'maximum_temperature', 'minimum_temperature'] and grid == 'CHIRTS':
@@ -85,7 +85,8 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 			print('Error - units')
 			exit()
 		grid_data.close() # se cierra el netCDF
-			
+		del grid_data
+
 		# Función para convertir fechas a índices de tiempo en la rejilla 
 		def convert_time_to_index(time_array, date):
 			time_num = nc.date2num(date, units=units, calendar='standard')#'days since 1991-01-01 00:00:00', calendar='standard')
@@ -95,9 +96,11 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 		
 		# Crear el interpolador para los datos de la rejilla 
 		def create_interpolator(targetvar_data, lat_array, lon_array, lat_station, lon_station):
+			lat_array = np.sort(np.unique(lat_array))
+			lon_array = np.sort(np.unique(lon_array))		
 			lat_idx = np.abs(lat_array - lat_station).argmin()
 			lon_idx = np.abs(lon_array - lon_station).argmin()
-			#print("Valores de variable en el dataset original en torno al punto de interés:", grid_targetvar[:, lat_idx-1:lat_idx+2, lon_idx-1:lon_idx+2])
+
 			# Definir rangos para interpolación local
 			lat_range = lat_array[max(0, lat_idx-1):min(len(lat_array), lat_idx+2)]
 			lon_range = lon_array[max(0, lon_idx-1):min(len(lon_array), lon_idx+2)]
@@ -116,8 +119,6 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 			time_idx = convert_time_to_index(grid_time, date)
 			interpolator = create_interpolator(grid_targetvar, grid_lat, grid_lon, lat, lon)
 			interpolated_value = interpolator((time_idx, lat, lon))
-			#print(int(time_idx))
-			#print(interpolated_value)
 			return interpolated_value
 			
 		print('data loaded')
@@ -284,6 +285,10 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 			monthly_avg[columns_to_divide] = monthly_avg[columns_to_divide] / (stations_data['station_id'].nunique() * stations_data['date'].nunique() / 365)
 		monthly_avg.to_csv(selected_variable + '_' + grid + '_annual_cycle_comparison.csv', index=False)
 		
+		del stations_data
+		del stations_data_accu_ini
+		del dfac
+		
 	# Diccionario para almacenar los datos de métricas
 	metrics_data_dict = {}
 	# Diccionario para almacenar los datos del ciclo anual
@@ -322,8 +327,6 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 	if 'level_1' in metrics_concat.columns:
 		metrics_concat = metrics_concat.drop('level_1', axis=1)
 		
-
-
 	# Obtener automáticamente la lista de métricas disponibles
 	metrics_to_plot = metrics_concat.drop(['Grid', 'station_id'], axis=1).columns.tolist()
 	
