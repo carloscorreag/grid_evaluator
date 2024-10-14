@@ -33,7 +33,7 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 	# Cargar datos de estaciones (archivo de ejemplo 'stations_data.csv')
 	print('loading stations CSV data...')
 	try:
-		stations_data_0 = pd.read_csv('stations_data_' + selected_variable + '_p81.csv')
+		stations_data_0 = pd.read_csv('stations_data_' + selected_variable + '.csv')
 		stations_data_0['date'] = pd.to_datetime(stations_data_0['date'])
 		# Filtrar por el periodo especificado
 		stations_data_0 = stations_data_0[(stations_data_0['date'].dt.year >= start_year) & (stations_data_0['date'].dt.year <= end_year)]
