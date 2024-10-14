@@ -71,9 +71,9 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 		grid_time = grid_data.variables[targettime][:]
 		units = grid_data.variables[targettime].units
 		
-		if selected_variable in ['temperature', 'maximum_temperature', 'minimum_temperature'] and grid != 'CHIRTS':
+		if selected_variable in ['temperature', 'maximum_temperature', 'minimum_temperature'] and grid not in ['CHIRTS', 'ERA5']:
 			grid_targetvar = grid_data.variables[targetvar][:].astype('float32') - 273.15 # convierte grados Kelvin a grados Celsius
-		elif selected_variable in ['temperature', 'maximum_temperature', 'minimum_temperature'] and grid == 'CHIRTS':
+		elif selected_variable in ['temperature', 'maximum_temperature', 'minimum_temperature'] and grid in ['CHIRTS', 'ERA5']:
 			grid_targetvar = grid_data.variables[targetvar][:].astype('float32') # mantiene las unidades en grados Celsius
 		elif selected_variable == 'precipitation' and grid != 'CHIRPS' and grid != 'ISIMIP-CHELSA':
 			grid_targetvar = grid_data.variables[targetvar][:].astype('float32')*1000 # convierte m/día a mm/día
