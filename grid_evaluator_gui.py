@@ -69,7 +69,13 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 		grid_lat = grid_data.variables[targetlat][:]
 		grid_lon = grid_data.variables[targetlon][:]
 		grid_time = grid_data.variables[targettime][:]
-		units = grid_data.variables[targettime].units
+		try:
+			units = grid_data.variables[targettime].units
+		except:
+			if grid == 'CHIRTS':
+				units = 'days since 1980-01-01 00:00:00'
+			else:
+				print('Error - units not found in netCDF metadata')
 		
 		if selected_variable in ['temperature', 'maximum_temperature', 'minimum_temperature'] and grid not in ['CHIRTS', 'ERA5']:
 			grid_targetvar = grid_data.variables[targetvar][:].astype('float32') - 273.15 # convierte grados Kelvin a grados Celsius
