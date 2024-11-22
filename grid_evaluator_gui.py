@@ -60,17 +60,29 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 			          
 		# Definir nombres de variables
 		names = variables_name_nc(grid_file)
-		targetvar = names[-1]
+
+		if grid in ['ERA5-Land'] and selected_variable in ['precipitation']:
+			targetvar = [string for string in names if string in ['tp']][0]
+		elif grid in ['ERA5-Land'] and selected_variable not in ['precipitation']:
+			targetvar = [string for string in names if string in ['t2m']][0]
+		else:
+			targetvar = names[-1]
 		targetlat = [string for string in names if 'lat' in string][0]
 		targetlon = [string for string in names if 'lon' in string][0]
-		targettime = [string for string in names if string == 'time'][0]
-
+		targettime = [string for string in names if string in ['time', 'valid_time']][0]
+		
+		
 		# Variables dentro del archivo netCDF y conversión de las unidades
 		grid_lat = grid_data.variables[targetlat][:]
 		grid_lon = grid_data.variables[targetlon][:]
 		grid_time = grid_data.variables[targettime][:]
+		
 		try:
-			units = grid_data.variables[targettime].units
+			if not np.any(grid_time.mask) == True:
+				units = grid_data.variables[targettime].units
+			else:
+				units = 'days since 1991-01-01 00:00:00'
+				grid_time = np.array(list(range(grid_time.shape[0])))
 		except:
 			if grid == 'CHIRTS':
 				units = 'days since 1980-01-01 00:00:00'
@@ -90,9 +102,9 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 		else:
 			print('Error - units')
 			exit()
+		
 		grid_data.close() # se cierra el netCDF
 		del grid_data
-
 		# Función para convertir fechas a índices de tiempo en la rejilla 
 		def convert_time_to_index(time_array, date):
 			time_num = nc.date2num(date, units=units, calendar='standard')#'days since 1991-01-01 00:00:00', calendar='standard')
@@ -101,7 +113,7 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 
 		
 		# Crear el interpolador para los datos de la rejilla 
-		def create_interpolator(targetvar_data, lat_array, lon_array, lat_station, lon_station):
+		def create_interpolator(targetvar_data, lat_array, lon_array, lat_station, lon_station, time_idx):
 			lat_array = np.sort(np.unique(lat_array))
 			lon_array = np.sort(np.unique(lon_array))		
 			lat_idx = np.abs(lat_array - lat_station).argmin()
@@ -110,21 +122,21 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 			# Definir rangos para interpolación local
 			lat_range = lat_array[max(0, lat_idx-1):min(len(lat_array), lat_idx+2)]
 			lon_range = lon_array[max(0, lon_idx-1):min(len(lon_array), lon_idx+2)]
-			targetvar_range = targetvar_data[:, max(0, lat_idx-1):min(len(lat_array), lat_idx+2), max(0, lon_idx-1):min(len(lon_array), lon_idx+2)]
+			targetvar_range = targetvar_data[time_idx, max(0, lat_idx-1):min(len(lat_array), lat_idx+2), max(0, lon_idx-1):min(len(lon_array), lon_idx+2)]	
 			
 			return RegularGridInterpolator(
-				(np.arange(len(grid_time)), lat_range, lon_range), 
+				(lat_range, lon_range), # (np.arange(len(grid_time)), lat_range, lon_range),
 				targetvar_range,
 				method='nearest',
 				bounds_error=False,
 				fill_value=np.nan
 			)
-
+			
 		# Función para extraer valores interpolados de la rejilla para las ubicaciones y fechas de las estaciones 
 		def extract_interpolated_grid_value(lat, lon, date):
 			time_idx = convert_time_to_index(grid_time, date)
-			interpolator = create_interpolator(grid_targetvar, grid_lat, grid_lon, lat, lon)
-			interpolated_value = interpolator((time_idx, lat, lon))
+			interpolator = create_interpolator(grid_targetvar, grid_lat, grid_lon, lat, lon, int(time_idx))
+			interpolated_value = interpolator((lat, lon)) #interpolator((time_idx, lat, lon))
 			return interpolated_value
 			
 		print('data loaded')
@@ -437,4 +449,4 @@ generate_button = ttk.Button(root, text='Generate Metrics & Plots', command=on_g
 generate_button.pack(pady=20)
 
 # Iniciar la interfaz gráfica
-root.mainloop()
+root.mainloop() 
