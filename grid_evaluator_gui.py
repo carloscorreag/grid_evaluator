@@ -63,8 +63,14 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 
 		if grid in ['ERA5-Land'] and selected_variable in ['precipitation']:
 			targetvar = [string for string in names if string in ['tp']][0]
-		elif grid in ['ERA5-Land'] and selected_variable not in ['precipitation']:
-			targetvar = [string for string in names if string in ['t2m']][0]
+		if grid == 'COSMO-REA6' and selected_variable == 'wind_speed':
+    			targetvar = [string for string in names if string == 'var33'][0]
+		elif grid in ['ERA5-Land'] and selected_variable == 'wind_speed':
+    			targetvar = [string for string in names if string == 'u10'][0]
+    			if not targetvar:
+        			raise ValueError(f"No se encontraron variables de viento ('u10', 'v10') en: {names}")
+		elif grid in ['ERA5-Land'] and selected_variable not in ['precipitation', 'wind_speed']:
+    			targetvar = [string for string in names if string in ['t2m']][0]
 		else:
 			targetvar = names[-1]
 		targetlat = [string for string in names if 'lat' in string][0]
@@ -93,6 +99,10 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 			grid_targetvar = grid_data.variables[targetvar][:].astype('float32') - 273.15 # convierte grados Kelvin a grados Celsius
 		elif selected_variable in ['temperature', 'maximum_temperature', 'minimum_temperature'] and grid in ['CHIRTS', 'ERA5']:
 			grid_targetvar = grid_data.variables[targetvar][:].astype('float32') # mantiene las unidades en grados Celsius
+		elif selected_variable in ['wind_speed'] and grid not in ['COSMO-REA6']:
+			grid_targetvar = grid_data.variables[targetvar][:].astype('float32') # mantiene las unidades de viento
+		elif selected_variable in ['wind_speed'] and grid in ['COSMO-REA6']:
+			grid_targetvar = grid_data.variables[targetvar][:][:,0,:,:].astype('float32') # mantiene las unidades de viento y pasa de 4D a 3D
 		elif selected_variable == 'precipitation' and grid != 'CHIRPS' and grid != 'ISIMIP-CHELSA':
 			grid_targetvar = grid_data.variables[targetvar][:].astype('float32')*1000 # convierte m/día a mm/día
 		elif selected_variable == 'precipitation' and grid == 'CHIRPS':
@@ -102,12 +112,28 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 		else:
 			print('Error - units')
 			exit()
-		
+		#print(grid_targetvar)
 		grid_data.close() # se cierra el netCDF
 		del grid_data
 		# Función para convertir fechas a índices de tiempo en la rejilla 
 		def convert_time_to_index(time_array, date):
-			time_num = nc.date2num(date, units=units, calendar='standard')#'days since 1991-01-01 00:00:00', calendar='standard')
+			# Convertir la fecha objetivo (date) a un número en las unidades originales
+			time_num = nc.date2num(date, units=units, calendar='standard')
+			# Calcular la diferencia en unidades (en el mismo sistema de unidades)
+			time_diff = np.abs(time_array - time_num)
+			# Verificar si alguna diferencia es mayor a 24 horas, en unidades compatibles
+			if units.startswith('days'):
+				threshold = 1  # 1 día
+			elif units.startswith('hours'):
+				threshold = 24  # 24 horas
+			elif units.startswith('seconds'):
+				threshold = 24 * 3600  # 24 horas * 3600 segundos
+			else:
+				raise ValueError("Unidades no soportadas en el cálculo.")
+			# Si la diferencia es mayor que el umbral, devolver NaN
+			if np.all(time_diff > threshold):
+				return np.nan
+			# Hacer la interpolación si las diferencias son menores o iguales a 24 horas
 			time_idx = np.interp(time_num, time_array, np.arange(len(time_array)))
 			return time_idx
 
@@ -121,7 +147,7 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 
 			# Definir rangos para interpolación local
 			lat_range = lat_array[max(0, lat_idx-1):min(len(lat_array), lat_idx+2)]
-			lon_range = lon_array[max(0, lon_idx-1):min(len(lon_array), lon_idx+2)]
+			lon_range = lon_array[max(0, lon_idx-1):min(len(lon_array), lon_idx+2)]		
 			targetvar_range = targetvar_data[time_idx, max(0, lat_idx-1):min(len(lat_array), lat_idx+2), max(0, lon_idx-1):min(len(lon_array), lon_idx+2)]	
 			
 			return RegularGridInterpolator(
@@ -135,6 +161,10 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 		# Función para extraer valores interpolados de la rejilla para las ubicaciones y fechas de las estaciones 
 		def extract_interpolated_grid_value(lat, lon, date):
 			time_idx = convert_time_to_index(grid_time, date)
+			try:
+				interpolator = create_interpolator(grid_targetvar, grid_lat, grid_lon, lat, lon, int(time_idx))
+			except:
+				return np.nan	
 			interpolator = create_interpolator(grid_targetvar, grid_lat, grid_lon, lat, lon, int(time_idx))
 			interpolated_value = interpolator((lat, lon)) #interpolator((time_idx, lat, lon))
 			return interpolated_value
@@ -190,6 +220,36 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 				'Variance Bias': variance_bias
 			})
 
+		def calculate_metrics_interpolated_wspeed(data):
+			data = data.dropna()  # Eliminar filas con NaN si es necesario
+			if len(data) < 2:
+				return pd.Series({
+					'Mean Bias': np.nan,
+					'Mean Absolute Error': np.nan,
+					'RMSE': np.nan,
+					'Correlation': np.nan,
+					'Variance Bias': np.nan
+				})
+			mean_bias = data['difference_interpolated'].mean()
+			mean_absolute_error = data['difference_interpolated'].abs().mean()
+			rmse = np.sqrt((data['difference_interpolated'] ** 2).mean())
+			correlation, _ = pearsonr(data['interpolated_grid_value'], data[selected_variable])
+			variance_bias = data['interpolated_grid_value'].var() - data[selected_variable].var()
+			percentile90_bias = np.percentile(data['interpolated_grid_value'], 90) - np.percentile(data[selected_variable], 90)
+			percentile10_bias = np.percentile(data['interpolated_grid_value'], 10) - np.percentile(data[selected_variable], 10)
+			percentile95_bias = np.percentile(data['interpolated_grid_value'], 95) - np.percentile(data[selected_variable], 95)
+			
+			return pd.Series({
+				'Mean Bias': mean_bias,
+				'P95 Bias': percentile95_bias,
+				'P90 Bias': percentile90_bias,
+				'P10 Bias': percentile10_bias,
+				'Mean Absolute Error': mean_absolute_error,
+				'RMSE': rmse,
+				'Correlation': correlation,
+				'Variance Bias': variance_bias
+			})
+
 		def calculate_metrics_interpolated_precip(data):
 			data = data.dropna()  # Eliminar filas con NaN si es necesario
 			if len(data) < 2:
@@ -232,6 +292,22 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 				'RMSE': '°C',
 				'Correlation': 'Dimensionless',
 				'Variance Bias': '°C²'
+			}
+
+		elif selected_variable == 'wind_speed':
+			metrics_per_station_interpolated = stations_data.groupby('station_id').apply(calculate_metrics_interpolated_wspeed).reset_index()
+			# Guardar métricas para cada estación en un csv
+			metrics_per_station_interpolated.to_csv('metrics_per_station_interpolated_' + grid + '_' + selected_variable + '.csv', index=False)
+			print('metrics_per_station_interpolated_' + grid + '_' + selected_variable + '.csv has been saved')	
+			units = {
+				'Mean Bias': 'm/s',
+				'P95 Bias': 'm/s',
+				'P90 Bias': 'm/s',
+				'P10 Bias': 'm/s',
+				'Mean Absolute Error': 'm/s',
+				'RMSE': 'm/s',
+				'Correlation': 'Dimensionless',
+				'Variance Bias': 'm²/s²'
 			}
 			
 		elif selected_variable == 'precipitation':
@@ -289,18 +365,30 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 		dfac['interpolated_grid_value'] = dfac['interpolated_grid_value'].astype(float)
 		# Agrupar por mes y calcular el ciclo anual promediando con todas las estaciones observacionales
 		if selected_variable != 'precipitation':
-			monthly_avg = dfac.groupby('month').agg({
+			# Paso 1: Calcular la media mensual por estación
+			station_monthly = dfac.groupby(['station_id', 'month']).agg({
+				selected_variable: 'mean',
+				'interpolated_grid_value': 'mean'
+			}).reset_index()
+			  
+			# Paso 2: Calcular la media mensual global entre estaciones
+			monthly_avg = station_monthly.groupby('month').agg({
 				selected_variable: 'mean',
 				'interpolated_grid_value': 'mean'
 			}).reset_index()
 		else:
-			monthly_avg = dfac.groupby('month').agg({
+			# Paso 1: Calcular la suma mensual por estación
+			station_monthly = dfac.groupby(['station_id', 'month']).agg({
 				selected_variable: 'sum',
 				'interpolated_grid_value': 'sum'
 			}).reset_index()
 			
-			columns_to_divide = [selected_variable, 'interpolated_grid_value']
-			monthly_avg[columns_to_divide] = monthly_avg[columns_to_divide] / (stations_data['station_id'].nunique() * stations_data['date'].nunique() / 365)
+			# Paso 2: Calcular la media mensual global entre todas las estaciones
+			monthly_avg = station_monthly.groupby('month').agg({
+				selected_variable: 'mean',
+				'interpolated_grid_value': 'mean'
+			}).reset_index()
+		# Exportar a CSV
 		monthly_avg.to_csv(selected_variable + '_' + grid + '_annual_cycle_comparison.csv', index=False)
 		
 		del stations_data
@@ -370,10 +458,12 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 		plt.plot(annual_cycle_dict[grid]['month'], annual_cycle_dict[grid]['interpolated_grid_value'], label= grid, marker='o')
 	# Configurar el gráfico
 	plt.xlabel('Month')
-	if selected_variable != 'precipitation':
-		plt.ylabel(selected_variable + ' (°C)')
-	else:
+	if selected_variable == 'precipitation':
 		plt.ylabel(selected_variable + ' (mm)')
+	elif selected_variable == 'wind_speed':
+		plt.ylabel(selected_variable + ' (m/s)')
+	else:
+		plt.ylabel(selected_variable + ' (°C)')
 	plt.title('Average Annual Cycle')
 	# Etiquetas de los meses abreviados en inglés
 	months_abbr = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -402,8 +492,8 @@ def on_generate_button_click():
 	generate_metrics_and_plots(selected_grids, selected_variables[0], int(start_year), int(end_year))
 
 # Variables y lista de rejillas
-variables = ['temperature', 'maximum_temperature', 'minimum_temperature', 'precipitation']
-grids = ['ISIMIP-CHELSA', 'CHIRTS', 'CHIRPS', 'ERA5', 'ERA5-Land']
+variables = ['temperature', 'maximum_temperature', 'minimum_temperature', 'precipitation', 'wind_speed']
+grids = ['ISIMIP-CHELSA', 'CHIRTS', 'CHIRPS', 'ERA5', 'ERA5-Land', 'COSMO-REA6', 'CERRA', 'EOBS']
 
 # Crear la GUI
 root = tk.Tk()
