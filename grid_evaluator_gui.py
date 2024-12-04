@@ -453,7 +453,7 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
  
 	# Graficar el ciclo anual
 	plt.figure(figsize=(12, 6))
-	plt.plot(annual_cycle_dict[grid]['month'], annual_cycle_dict[grid][selected_variable], label= 'observations', marker='o')
+	plt.plot(annual_cycle_dict[grid]['month'], annual_cycle_dict[grid][selected_variable], label= 'observations', marker='o', color='black')
 	for grid in selected_grids:
 		plt.plot(annual_cycle_dict[grid]['month'], annual_cycle_dict[grid]['interpolated_grid_value'], label= grid, marker='o')
 	# Configurar el gráfico
