@@ -383,7 +383,12 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 				'interpolated_grid_value': 'sum'
 			}).reset_index()
 			
-			# Paso 2: Calcular la media mensual global entre todas las estaciones
+			# Paso 2: Dividir por el número de años en el periodo de análisis
+			num_years = stations_data['date'].nunique() / 365  
+			station_monthly[selected_variable] /= num_years
+			station_monthly['interpolated_grid_value'] /= num_years
+			
+			# Paso 3: Calcular la media mensual global entre todas las estaciones
 			monthly_avg = station_monthly.groupby('month').agg({
 				selected_variable: 'mean',
 				'interpolated_grid_value': 'mean'
