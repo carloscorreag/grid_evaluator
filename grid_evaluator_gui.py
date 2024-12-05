@@ -65,11 +65,17 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 			targetvar = [string for string in names if string in ['tp']][0]
 		if grid == 'COSMO-REA6' and selected_variable == 'wind_speed':
     			targetvar = [string for string in names if string == 'var33'][0]
+		if grid == 'COSMO-REA6' and selected_variable == 'humidity':
+			targetvar = [string for string in names if string == 'var52'][0]
 		elif grid in ['ERA5-Land'] and selected_variable == 'wind_speed':
     			targetvar = [string for string in names if string == 'u10'][0]
     			if not targetvar:
         			raise ValueError(f"No se encontraron variables de viento ('u10', 'v10') en: {names}")
-		elif grid in ['ERA5-Land'] and selected_variable not in ['precipitation', 'wind_speed']:
+		elif grid in ['ERA5-Land'] and selected_variable == 'humidity':
+			targetvar = [string for string in names if string == 'hr2m'][0]
+			if not targetvar:
+				raise ValueError(f"No se encontraron variables de humedad en: {names}")
+		elif grid in ['ERA5-Land'] and selected_variable not in ['precipitation', 'wind_speed', 'humidity']:
     			targetvar = [string for string in names if string in ['t2m']][0]
 		else:
 			targetvar = names[-1]
@@ -94,7 +100,7 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 				units = 'days since 1980-01-01 00:00:00'
 			else:
 				print('Error - units not found in netCDF metadata')
-		
+				
 		if selected_variable in ['temperature', 'maximum_temperature', 'minimum_temperature'] and grid not in ['CHIRTS', 'ERA5']:
 			grid_targetvar = grid_data.variables[targetvar][:].astype('float32') - 273.15 # convierte grados Kelvin a grados Celsius
 		elif selected_variable in ['temperature', 'maximum_temperature', 'minimum_temperature'] and grid in ['CHIRTS', 'ERA5']:
@@ -109,12 +115,20 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 			grid_targetvar = grid_data.variables[targetvar][:].astype('float32') # mantiene las unidades en mm/día
 		elif selected_variable == 'precipitation' and grid == 'ISIMIP-CHELSA':
 			grid_targetvar = grid_data.variables[targetvar][:].astype('float32')*86400 # convierte kg/m²s a mm/día
+		elif selected_variable in ['humidity'] and grid not in ['COSMO-REA6']:
+			grid_targetvar = grid_data.variables[targetvar][:].astype('float32')# mantiene las unidades de humedad
+		elif selected_variable in ['humidity'] and grid in ['COSMO-REA6']:
+			grid_targetvar = grid_data.variables[targetvar][:][:,0,:,:].astype('float32') # mantiene las unidades de humedad y pasa de 4D a 3D
 		else:
 			print('Error - units')
 			exit()
-		#print(grid_targetvar)
+			
+		grid_targetvar = np.where(grid_targetvar.mask, np.nan, grid_targetvar) # valores enmascarados se sustituyen por NaN
+		fill_value = getattr(grid_data.variables[targetvar], '_FillValue', None)  # Detectar si existe _FillValue
+		grid_targetvar = np.where(grid_targetvar == fill_value, np.nan, grid_targetvar) # _FillValue se sustituye por NaN
 		grid_data.close() # se cierra el netCDF
 		del grid_data
+		
 		# Función para convertir fechas a índices de tiempo en la rejilla 
 		def convert_time_to_index(time_array, date):
 			# Convertir la fecha objetivo (date) a un número en las unidades originales
@@ -153,21 +167,22 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 			return RegularGridInterpolator(
 				(lat_range, lon_range), # (np.arange(len(grid_time)), lat_range, lon_range),
 				targetvar_range,
-				method='nearest',
-				bounds_error=False,
+				method='nearest',# linear
+				bounds_error=True,
 				fill_value=np.nan
 			)
 			
 		# Función para extraer valores interpolados de la rejilla para las ubicaciones y fechas de las estaciones 
 		def extract_interpolated_grid_value(lat, lon, date):
 			time_idx = convert_time_to_index(grid_time, date)
-			try:
+			try: 
 				interpolator = create_interpolator(grid_targetvar, grid_lat, grid_lon, lat, lon, int(time_idx))
+				interpolated_value = interpolator((lat, lon)) #interpolator((time_idx, lat, lon))
+				return interpolated_value
 			except:
+				print(np.nan)
 				return np.nan	
-			interpolator = create_interpolator(grid_targetvar, grid_lat, grid_lon, lat, lon, int(time_idx))
-			interpolated_value = interpolator((lat, lon)) #interpolator((time_idx, lat, lon))
-			return interpolated_value
+			
 			
 		print('data loaded')
 		
@@ -276,7 +291,37 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 				'Correlation': correlation,
 				'Variance Bias': variance_bias
 			})
-
+                
+		def calculate_metrics_interpolated_humidity(data):
+			data = data.dropna()  # Eliminar filas con NaN si es necesario
+			if len(data) < 2:
+				return pd.Series({
+					'Mean Bias': np.nan,
+					'Mean Absolute Error': np.nan,
+					'RMSE': np.nan,
+					'Correlation': np.nan,
+					'Variance Bias': np.nan
+				})
+			mean_bias = data['difference_interpolated'].mean()
+			mean_absolute_error = data['difference_interpolated'].abs().mean()
+			rmse = np.sqrt((data['difference_interpolated'] ** 2).mean())
+			correlation, _ = pearsonr(data['interpolated_grid_value'], data[selected_variable])
+			variance_bias = data['interpolated_grid_value'].var() - data[selected_variable].var()
+			percentile90_bias = np.percentile(data['interpolated_grid_value'], 90) - np.percentile(data[selected_variable], 90)
+			percentile10_bias = np.percentile(data['interpolated_grid_value'], 10) - np.percentile(data[selected_variable], 10)
+			percentile95_bias = np.percentile(data['interpolated_grid_value'], 95) - np.percentile(data[selected_variable], 95)
+			
+			return pd.Series({
+				'Mean Bias': mean_bias,
+				'P95 Bias': percentile95_bias,
+				'P90 Bias': percentile90_bias,
+				'P10 Bias': percentile10_bias,
+				'Mean Absolute Error': mean_absolute_error,
+				'RMSE': rmse,
+				'Correlation': correlation,
+				'Variance Bias': variance_bias
+			})
+		
 		# Calcular métricas basadas en la variable seleccionada
 		if selected_variable in ['temperature', 'maximum_temperature', 'minimum_temperature']:
 			metrics_per_station_interpolated = stations_data.groupby('station_id').apply(calculate_metrics_interpolated_temp).reset_index()
@@ -353,6 +398,23 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 
 			metrics_per_station_interpolated.to_csv('metrics_per_station_interpolated_' + grid + '_' + selected_variable + '.csv', index=False)
 			print('metrics_per_station_interpolated_' + grid + '_' + selected_variable + '.csv has been saved')
+
+
+		elif selected_variable == 'humidity':
+			metrics_per_station_interpolated = stations_data.groupby('station_id').apply(calculate_metrics_interpolated_humidity).reset_index()
+                        # Guardar métricas para cada estación en un csv
+			metrics_per_station_interpolated.to_csv('metrics_per_station_interpolated_' + grid + '_' + selected_variable + '.csv', index=False)
+			print('metrics_per_station_interpolated_' + grid + '_' + selected_variable + '.csv has been saved')
+			units = {
+				'Mean Bias': '%',
+				'P95 Bias': '%',
+				'P90 Bias': '%',
+				'P10 Bias': '%',
+				'Mean Absolute Error': '%',
+				'RMSE': '%',
+				'Correlation': 'Dimensionless',
+				'Variance Bias': '%²'
+			}
 			
 		else:
 			print(f'Error: variable {selected_variable} no contemplada para el cálculo de métricas.')
@@ -497,7 +559,7 @@ def on_generate_button_click():
 	generate_metrics_and_plots(selected_grids, selected_variables[0], int(start_year), int(end_year))
 
 # Variables y lista de rejillas
-variables = ['temperature', 'maximum_temperature', 'minimum_temperature', 'precipitation', 'wind_speed']
+variables = ['temperature', 'maximum_temperature', 'minimum_temperature', 'precipitation', 'wind_speed','humidity']
 grids = ['ISIMIP-CHELSA', 'CHIRTS', 'CHIRPS', 'ERA5', 'ERA5-Land', 'COSMO-REA6', 'CERRA', 'EOBS']
 
 # Crear la GUI
