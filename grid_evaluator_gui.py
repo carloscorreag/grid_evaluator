@@ -240,6 +240,14 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 			print('Error - units')
 			exit()
 			
+		# forzar sentido ascendente
+		if (grid_lat[0] > grid_lat[-1]):
+			grid_lat = np.flip(grid_lat)
+			grid_targetvar = np.flip(grid_targetvar, axis=1)
+		if (grid_lon[0] > grid_lon[-1]):
+			grid_lon = np.flip(grid_lon)
+			grid_targetvar = np.flip(grid_targetvar, axis=2)
+		# tratamiento de máscaras, nans y valores de relleno
 		grid_targetvar = np.where(grid_targetvar.mask, np.nan, grid_targetvar) # valores enmascarados se sustituyen por NaN
 		fill_value = getattr(grid_data.variables[targetvar], '_FillValue', None)  # Detectar si existe _FillValue
 		grid_targetvar = np.where(grid_targetvar == fill_value, np.nan, grid_targetvar) # _FillValue se sustituye por NaN
