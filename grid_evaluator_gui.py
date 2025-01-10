@@ -603,6 +603,7 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 	
 	stations_data_0['month'] = stations_data_0['date'].dt.month
 	stations_data_0[selected_variable] = pd.to_numeric(stations_data_0[selected_variable], errors='coerce')
+	stations_data_0 = stations_data_0.dropna()
 	stations_data_0[selected_variable] = stations_data_0[selected_variable].astype(float)
 	# Agrupar por mes y calcular el ciclo anual promediando con todas las estaciones observacionales
 	if selected_variable != 'precipitation':
