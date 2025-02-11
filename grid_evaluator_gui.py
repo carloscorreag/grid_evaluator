@@ -317,7 +317,7 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 		def extract_interpolated_grid_value(lat, lon, date):
 			time_idx = convert_time_to_index(grid_time, date)
 			try: 
-				interpolator = create_interpolator(grid_targetvar, grid_lat, grid_lon, lat, lon, int(time_idx),interpolation_method)
+				interpolator = create_interpolator(grid_targetvar, grid_lat, grid_lon, lat, lon, round(time_idx),interpolation_method)
 				interpolated_value = interpolator((lat, lon)) 
 				return interpolated_value
 			except:
