@@ -26,6 +26,7 @@ def variables_name_nc(f_path):
 def get_time_period(start_year, end_year):
 	return int(start_year), int(end_year)
 
+
 #Función para generar las métricas y las figuras
 def generate_metrics_and_plots(selected_grids, selected_variable, start_year, end_year, selected_months, interpolation_method):
 	print('Selected grids: ' + str(selected_grids))
@@ -36,13 +37,22 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 
 	# Cargar datos de estaciones (archivo de ejemplo 'stations_data.csv')
 	print('loading stations CSV data...')
-	try:
+	try: 
 		stations_data_0 = pd.read_csv('stations_data_' + selected_variable + '.csv')
 		stations_data_0['date'] = pd.to_datetime(stations_data_0['date'])
 		
 		# Filtrar por el periodo especificado
 		stations_data_0 = stations_data_0[(stations_data_0['date'].dt.year >= start_year) & (stations_data_0['date'].dt.year <= end_year)]
 		stations_data_0 = stations_data_0[stations_data_0['date'].dt.month.isin(selected_months)]
+		def limpiar_valores(x):
+			if pd.isna(x):  
+				return ""  # Si es NaN, lo convertimos a string vacío
+			x = str(x)  # Convertir todo a string
+			if x.endswith(".0"):  
+				return x[:-2]  # Eliminar ".0" solo si está al final
+			return x  # Si no termina en ".0", lo dejamos igual
+
+		stations_data_0['station_id'] = stations_data_0['station_id'].apply(limpiar_valores)
 		print(stations_data_0)
 		
 		# Convertir la columna 'date' a tipo datetime
@@ -58,6 +68,7 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 		# Agrupar por estación
 		stations = stations_data_1['station_id'].unique()
 		results = []
+		stations_to_remove = []  
 		for station_id in stations:
 			
 			# Filtrar datos de la estación
@@ -69,7 +80,7 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 			
 			# Detectar días con valores faltantes y con valores de relleno específicos
 			df_station['is_nan'] = df_station[selected_variable].isna()
-			df_station['is_filled'] = df_station[selected_variable].isin([-99, -999, -9999])
+			df_station['is_filled'] = df_station[selected_variable].isin([-99,-99.9, -999,-999.9 -9999, -9999.9])
 			nan_days = df_station[df_station['is_nan']]['date']
 			filled_days = df_station[df_station['is_filled']]['date']
 			
@@ -91,7 +102,11 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 				"days_without_valid_data": total_days - recorded_days,
 				"completeness_percentage": completeness_percentage
 			})
-
+		
+			# Si la estación tiene menos del 90% de completitud, agregarla a la lista de estaciones a eliminar
+			if completeness_percentage < 90:
+				stations_to_remove.append(station_id)
+		
 		# Convertir resultados a DataFrame
 		results_df= pd.DataFrame(results)
 
@@ -99,7 +114,9 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 		bins = [0, 10, 50, 90, 99, 100]
 		labels = ["<10%", "10-50%", "50-90%", "90-99%", "99-100%"]
 		results_df['completeness_category'] = pd.cut(results_df['completeness_percentage'], bins=bins, labels=labels)
-
+		# Corregir las estaciones con completitud 0% manualmente
+		results_df.loc[results_df['completeness_percentage'] == 0, 'completeness_category'] = "<10%"
+		
 		# Guardar en un archivo CSV
 		results_df.to_csv("stations_completeness.csv", index=False)
 		print('stations_completeness.csv has been saved')
@@ -145,16 +162,20 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 		# Filtrar filas eliminando las que tienen nan
 		stations_data_0 = stations_data_0.dropna()
 		# Filtrar filas eliminando las que tienen -99, -999 o -9999'
-		values_to_remove = [-99, -999, -9999]
+		values_to_remove = [-99,-99.9, -999,-999.9 -9999, -9999.9]
 		stations_data_0 = stations_data_0[~stations_data_0[selected_variable].isin(values_to_remove)]
-			
+		
+		# Eliminar las estaciones con menos del 90% de completitud
+		#stations_data_0 = stations_data_0[~stations_data_0['station_id'].isin(stations_to_remove)]
+		#print(f"Se han eliminado las estaciones con menos del 90 por ciento de completitud: {len(stations_to_remove)} estaciones.")
+	
 	except FileNotFoundError:
 		print(f'Error - file not found: stations_data_{selected_variable}.csv')
 		exit()
 	
 	for grid in selected_grids:
 		stations_data = stations_data_0 # se crea un nuevo dataframe que contiene los datos de las estaciones del CSV 
-		# Cargar datos de la rejilla (ISIMIP-CHELSA, CHIRTS, CHIRPS, ERA5, ERA5-land, 'COSMO-REA6', 'CERRA', 'CERRA-Land', 'EOBS') usando netCDF4
+		# Cargar datos de la rejilla ('ISIMIP-CHELSA', 'CHIRTS', 'CHIRPS', 'ERA5', 'ERA5-Land', 'COSMO-REA6', 'CERRA', 'CERRA_LAND', 'EOBS', 'EOBS_HR', 'EOBS_LR') usando netCDF4
 		print(grid)
 		print('loading netCDF grid data...')
 		
@@ -200,10 +221,26 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 		targettime = [string for string in names if string in ['time', 'valid_time']][0]
 		
 		# Variables dentro del archivo netCDF y conversión de las unidades
+		
+		# Asignar la variable principal del dataset
+		grid_targetvar = grid_data.variables[targetvar]
+		# Reducir dimensiones innecesarias en altura
+		grid_targetvar = np.squeeze(grid_targetvar)
+		
+		conversion_factors = {
+			"temperature": -273.15 if grid not in ["CHIRTS", "ERA5"] else 0,
+			"maximum_temperature": -273.15 if grid not in ["CHIRTS", "ERA5"] else 0,
+			"minimum_temperature": -273.15 if grid not in ["CHIRTS", "ERA5"] else 0,
+			"precipitation": 1000 if grid not in ["ISIMIP-CHELSA", "CHIRPS", "CERRA"] else
+							86400 if grid in ["ISIMIP-CHELSA"] else 1,
+		}
+		
+		# Asignar latitudes, longitudes y tiempo
+		
 		grid_lat = grid_data.variables[targetlat][:]
 		grid_lon = grid_data.variables[targetlon][:]
 		grid_time = grid_data.variables[targettime][:]
-		
+
 		try:
 			if not np.any(grid_time.mask) == True:
 				units = grid_data.variables[targettime].units
@@ -216,41 +253,29 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 			else:
 				print('Error - units not found in netCDF metadata')
 		
-		if selected_variable in ['temperature', 'maximum_temperature', 'minimum_temperature'] and grid not in ['CHIRTS', 'ERA5']:
-			grid_targetvar = grid_data.variables[targetvar][:].astype('float32') - 273.15 # convierte grados Kelvin a grados Celsius
-		elif selected_variable in ['temperature', 'maximum_temperature', 'minimum_temperature'] and grid in ['CHIRTS', 'ERA5']:
-			grid_targetvar = grid_data.variables[targetvar][:].astype('float32') # mantiene las unidades en grados Celsius
-		elif selected_variable in ['wind_speed'] and grid not in ['COSMO-REA6']:
-			grid_targetvar = grid_data.variables[targetvar][:].astype('float32') # mantiene las unidades de viento
-		elif selected_variable in ['wind_speed'] and grid in ['COSMO-REA6']:
-			grid_targetvar = grid_data.variables[targetvar][:][:,0,:,:].astype('float32') # mantiene las unidades de viento y pasa de 4D a 3D
-		elif selected_variable == 'precipitation' and grid not in ['ISIMIP-CHELSA', 'CHIRPS', 'CERRA']:
-			grid_targetvar = grid_data.variables[targetvar][:].astype('float32')*1000 # convierte m/día a mm/día
-		elif selected_variable == 'precipitation' and grid == 'CERRA':
-			grid_targetvar = grid_data.variables[targetvar][:][:,0,:,:].astype('float32')*1000 # convierte m/día a mm/día y pasa de 4D a 3D
-		elif selected_variable == 'precipitation' and grid in ['CHIRPS']:
-			grid_targetvar = grid_data.variables[targetvar][:].astype('float32') # mantiene las unidades en mm/día
-		elif selected_variable == 'precipitation' and grid in ['ISIMIP-CHELSA']:
-			grid_targetvar = grid_data.variables[targetvar][:].astype('float32')*86400 # convierte kg/m²s a mm/día
-		elif selected_variable in ['humidity'] and grid not in ['COSMO-REA6']:
-			grid_targetvar = grid_data.variables[targetvar][:].astype('float32')# mantiene las unidades de humedad
-		elif selected_variable in ['humidity'] and grid in ['COSMO-REA6']:
-			grid_targetvar = grid_data.variables[targetvar][:][:,0,:,:].astype('float32') # mantiene las unidades de humedad y pasa de 4D a 3D
-		else:
-			print('Error - units')
-			exit()
-			
 		# forzar sentido ascendente
 		if (grid_lat[0] > grid_lat[-1]):
 			grid_lat = np.flip(grid_lat)
+			grid_targetvar = grid_data.variables[targetvar][:]
+			grid_targetvar = np.squeeze(grid_targetvar)
 			grid_targetvar = np.flip(grid_targetvar, axis=1)
 		if (grid_lon[0] > grid_lon[-1]):
 			grid_lon = np.flip(grid_lon)
+			grid_targetvar = grid_data.variables[targetvar][:]
+			grid_targetvar = np.squeeze(grid_targetvar)
 			grid_targetvar = np.flip(grid_targetvar, axis=2)
 		# tratamiento de máscaras, nans y valores de relleno
+		'''
 		grid_targetvar = np.where(grid_targetvar.mask, np.nan, grid_targetvar) # valores enmascarados se sustituyen por NaN
 		fill_value = getattr(grid_data.variables[targetvar], '_FillValue', None)  # Detectar si existe _FillValue
 		grid_targetvar = np.where(grid_targetvar == fill_value, np.nan, grid_targetvar) # _FillValue se sustituye por NaN
+		'''
+		if hasattr(grid_targetvar, "mask"):
+			grid_targetvar = np.where(grid_targetvar.mask, np.nan, grid_targetvar)
+		fill_value = getattr(grid_data.variables[targetvar], '_FillValue', None)
+		if fill_value is not None:
+			grid_targetvar = np.where(grid_targetvar == fill_value, np.nan, grid_targetvar)
+
 		grid_data.close() # se cierra el netCDF
 		del grid_data
 		
@@ -265,6 +290,8 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 				threshold = 1  # 1 día
 			elif units.startswith('hours'):
 				threshold = 24  # 24 horas
+			elif units.startswith('minutes'):
+				threshold = 24 * 60 # 24 horas * 60 minutos
 			elif units.startswith('seconds'):
 				threshold = 24 * 3600  # 24 horas * 3600 segundos
 			else:
@@ -274,20 +301,29 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 				return np.nan
 			# Hacer la interpolación si las diferencias son menores o iguales a 24 horas
 			time_idx = np.interp(time_num, time_array, np.arange(len(time_array)))
-			return time_idx
+			
+			if grid in ['CERRA','CERRA_LAND'] and selected_variable == 'precipitation':
+				return int(time_idx)
+			else:
+				return round(time_idx)
+			
 
 		# Crear el interpolador para los datos de la rejilla 
-		def create_interpolator(targetvar_data, lat_array, lon_array, lat_station, lon_station, time_idx, interpolation_method):
+		def create_interpolator(targetvar_data, lat_array, lon_array, lat_station, lon_station, time_idx, interpolation_method, date):
 			lat_array = np.sort(np.unique(lat_array))
 			lon_array = np.sort(np.unique(lon_array))		
 			lat_idx = np.abs(lat_array - lat_station).argmin()
 			lon_idx = np.abs(lon_array - lon_station).argmin()
+			
+			# Aplicar conversión de unidades si corresponde
+			targetvar_data *= conversion_factors.get(selected_variable, 1)
 
 			# Definir rangos para interpolación local
+			
 			lat_range = lat_array[max(0, lat_idx-1):min(len(lat_array), lat_idx+2)]
 			lon_range = lon_array[max(0, lon_idx-1):min(len(lon_array), lon_idx+2)]	
-			targetvar_range = targetvar_data[time_idx, max(0, lat_idx-1):min(len(lat_array), lat_idx+2), max(0, lon_idx-1):min(len(lon_array), lon_idx+2)]	
-			
+			targetvar_range = targetvar_data[time_idx, max(0, lat_idx-1):min(len(lat_array), lat_idx+2), max(0, lon_idx-1):min(len(lon_array), lon_idx+2)]
+				
 			# Comprobar y manejar `np.nan` en targetvar_range. Si todos son `np.nan`, devuelve `np.nan`
 			if np.isnan(targetvar_range).all():
 				targetvar_range[:] = np.nan  # Por ejemplo, rellena todo con ceros
@@ -317,8 +353,10 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 		def extract_interpolated_grid_value(lat, lon, date):
 			time_idx = convert_time_to_index(grid_time, date)
 			try: 
-				interpolator = create_interpolator(grid_targetvar, grid_lat, grid_lon, lat, lon, round(time_idx),interpolation_method)
+				interpolator = create_interpolator(grid_targetvar, grid_lat, grid_lon, lat, lon, time_idx,interpolation_method, date)
 				interpolated_value = interpolator((lat, lon)) 
+				if selected_variable == 'precipitation' and interpolated_value < 0:
+					interpolated_value = 0
 				return interpolated_value
 			except:
 				return np.nan	
@@ -332,7 +370,7 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 			lambda row: extract_interpolated_grid_value(row['latitude'], row['longitude'], row['date']),
 			axis=1
 		)
-		
+
 		# Calcular diferencias y métricas
 		stations_data['interpolated_grid_value'] = stations_data['interpolated_grid_value'].apply(lambda x: x.filled(np.nan) if isinstance(x, np.ma.MaskedArray) else x) # los valores enmascarados se convierten a NaN
 		stations_data = stations_data.dropna() # se eliminan filas con NaN
@@ -403,7 +441,37 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 				'Correlation': correlation,
 				'Variance Bias': variance_bias
 			})
-
+		
+		def calculate_metrics_interpolated_radiation(data):
+			data = data.dropna()  # Eliminar filas con NaN si es necesario
+			if len(data) < 2:
+				return pd.Series({
+					'Mean Bias': np.nan,
+					'Mean Absolute Error': np.nan,
+					'RMSE': np.nan,
+					'Correlation': np.nan,
+					'Variance Bias': np.nan
+				})
+			mean_bias = data['difference_interpolated'].mean()
+			mean_absolute_error = data['difference_interpolated'].abs().mean()
+			rmse = np.sqrt((data['difference_interpolated'] ** 2).mean())
+			correlation, _ = pearsonr(data['interpolated_grid_value'], data[selected_variable])
+			variance_bias = data['interpolated_grid_value'].var() - data[selected_variable].var()
+			percentile90_bias = np.percentile(data['interpolated_grid_value'], 90) - np.percentile(data[selected_variable], 90)
+			percentile10_bias = np.percentile(data['interpolated_grid_value'], 10) - np.percentile(data[selected_variable], 10)
+			percentile95_bias = np.percentile(data['interpolated_grid_value'], 95) - np.percentile(data[selected_variable], 95)
+			
+			return pd.Series({
+				'Mean Bias': mean_bias,
+				'P95 Bias': percentile95_bias,
+				'P90 Bias': percentile90_bias,
+				'P10 Bias': percentile10_bias,
+				'Mean Absolute Error': mean_absolute_error,
+				'RMSE': rmse,
+				'Correlation': correlation,
+				'Variance Bias': variance_bias
+			})
+		
 		def calculate_metrics_interpolated_precip(data):
 			data = data.dropna()  # Eliminar filas con NaN si es necesario
 			if len(data) < 2:
@@ -415,11 +483,13 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 				})
 			mean_bias = data['difference_interpolated'].mean()
 			mean_absolute_error = data['difference_interpolated'].abs().mean()
-			correlation, _ = spearmanr(data['interpolated_grid_value'], data['precipitation'])
-			variance_bias = data['precipitation'].var() - data['interpolated_grid_value'].var()
-			percentile90_bias = np.percentile(data['interpolated_grid_value'], 90) - np.percentile(data['precipitation'], 90)
-			percentile10_bias = np.percentile(data['interpolated_grid_value'], 10) - np.percentile(data['precipitation'], 10)
-			percentile95_bias = np.percentile(data['interpolated_grid_value'], 95) - np.percentile(data['precipitation'], 95)
+			correlation, _ = spearmanr(data['interpolated_grid_value'], data[selected_variable])
+			variance_bias = data['interpolated_grid_value'].var() - data[selected_variable].var()
+			std_bias = data['interpolated_grid_value'].std() - data[selected_variable].std()
+			percentile90_bias = np.percentile(data['interpolated_grid_value'], 90) - np.percentile(data[selected_variable], 90)
+			percentile10_bias = np.percentile(data['interpolated_grid_value'], 10) - np.percentile(data[selected_variable], 10)
+			percentile95_bias = np.percentile(data['interpolated_grid_value'], 95) - np.percentile(data[selected_variable], 95)
+			
 			
 			return pd.Series({
 				'Mean Bias': mean_bias,
@@ -428,8 +498,10 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 				'P10 Bias': percentile10_bias,
 				'Mean Absolute Error': mean_absolute_error,
 				'Correlation': correlation,
-				'Variance Bias': variance_bias
+				'Variance Bias': variance_bias,
+				'Std Bias': std_bias
 			})
+			
 		def calculate_metrics_interpolated_humidity(data):
 			data = data.dropna()  # Eliminar filas con NaN si es necesario
 			if len(data) < 2:
@@ -492,7 +564,24 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 				'Correlation': 'Dimensionless',
 				'Variance Bias': 'm²/s²'
 			}
-			
+		
+		elif selected_variable == 'radiation':
+			metrics_per_station_interpolated = stations_data.groupby('station_id').apply(calculate_metrics_interpolated_wspeed).reset_index()
+			# Guardar métricas para cada estación en un csv
+			metrics_per_station_interpolated.to_csv('metrics_per_station_interpolated_' + grid + '_' + selected_variable + '.csv', index=False)
+			print('metrics_per_station_interpolated_' + grid + '_' + selected_variable + '.csv has been saved')	
+			units = {
+				'Mean Bias': 'J/m²',
+				'P95 Bias': 'J/m²',
+				'P90 Bias': 'J/m²',
+				'P10 Bias': 'J/m²',
+				'Mean Absolute Error': 'J/m²',
+				'RMSE': 'J/m²',
+				'Correlation': 'Dimensionless',
+				'Variance Bias': 'J²/m⁴'
+			}
+		
+		
 		elif selected_variable == 'precipitation':
 			metrics_per_station_interpolated = stations_data.groupby('station_id').apply(calculate_metrics_interpolated_precip).reset_index()
 			# Guardar métricas para cada estación en un csv
@@ -505,7 +594,8 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 				'Mean Absolute Error': 'mm',
 				'Correlation': 'Dimensionless',
 				'Variance Bias': 'mm²',
-				'Number of wet days Bias': 'days'
+				'Number of wet days Bias': 'days',
+				'Std Bias': 'mm'
 			}
 			
 			# Calcular el número de días con precipitación observada mayor a 1 mm
@@ -524,9 +614,9 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 			accumulated_precipitation['difference_days'] =  accumulated_precipitation['days_with_precipitation_interpolated'] - accumulated_precipitation['days_with_precipitation']
 
 			def calculate_metrics_accumulated(data):
-				R01_bias = data['difference_days'].mean()
+				R0025_bias = data['difference_days'].mean()
 				return pd.Series({
-					'Number of wet days Bias': R01_bias
+					'Number of wet days Bias': R0025_bias
 				})
 
 			metrics_per_station_accumulated = accumulated_precipitation.groupby('station_id').apply(calculate_metrics_accumulated).reset_index()
@@ -538,6 +628,7 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 			print('metrics_per_station_interpolated_' + grid + '_' + selected_variable + '.csv has been saved')
 
 		elif selected_variable == 'humidity':
+			print(stations_data.groupby('station_id').apply(calculate_metrics_interpolated_humidity))
 			metrics_per_station_interpolated = stations_data.groupby('station_id').apply(calculate_metrics_interpolated_humidity).reset_index()
                         # Guardar métricas para cada estación en un csv
 			metrics_per_station_interpolated.to_csv('metrics_per_station_interpolated_' + grid + '_' + selected_variable + '.csv', index=False)
@@ -566,30 +657,25 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 		if selected_variable != 'precipitation':
 			# Paso 1: Calcular la media mensual por estación
 			station_monthly = dfac.groupby(['station_id', 'month']).agg({
-				selected_variable: 'mean',
 				'interpolated_grid_value': 'mean'
 			}).reset_index()
 			  
 			# Paso 2: Calcular la media mensual global entre estaciones
 			monthly_avg = station_monthly.groupby('month').agg({
-				selected_variable: 'mean',
 				'interpolated_grid_value': 'mean'
 			}).reset_index()
 		else:
 			# Paso 1: Calcular la suma mensual por estación
 			station_monthly = dfac.groupby(['station_id', 'month']).agg({
-				selected_variable: 'sum',
 				'interpolated_grid_value': 'sum'
 			}).reset_index()
 			
 			# Paso 2: Dividir por el número de años en el periodo de análisis
 			num_years = stations_data['date'].nunique() / (365 * len(selected_months) / 12)  
-			station_monthly[selected_variable] /= num_years
 			station_monthly['interpolated_grid_value'] /= num_years
 			
 			# Paso 3: Calcular la media mensual global entre todas las estaciones
 			monthly_avg = station_monthly.groupby('month').agg({
-				selected_variable: 'mean',
 				'interpolated_grid_value': 'mean'
 			}).reset_index()
 		# Exportar a CSV
@@ -602,27 +688,22 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 	# Calcular el ciclo anual de las observaciones
 	
 	stations_data_0['month'] = stations_data_0['date'].dt.month
-	stations_data_0[selected_variable] = pd.to_numeric(stations_data_0[selected_variable], errors='coerce')
-	stations_data_0 = stations_data_0.dropna()
 	stations_data_0[selected_variable] = stations_data_0[selected_variable].astype(float)
 	# Agrupar por mes y calcular el ciclo anual promediando con todas las estaciones observacionales
 	if selected_variable != 'precipitation':
 		# Paso 1: Calcular la media mensual por estación
 		station_monthly_obs = stations_data_0.groupby(['station_id', 'month']).agg({
-			selected_variable: 'mean',
-			'interpolated_grid_value': 'mean'
+			selected_variable: 'mean'
 		}).reset_index()
 			
 		# Paso 2: Calcular la media mensual global entre estaciones
 		monthly_avg_obs = station_monthly_obs.groupby('month').agg({
-			selected_variable: 'mean',
-			'interpolated_grid_value': 'mean'
+			selected_variable: 'mean'
 		}).reset_index()
 	else:
 		# Paso 1: Calcular la suma mensual por estación
 		station_monthly_obs = stations_data_0.groupby(['station_id', 'month']).agg({
-			selected_variable: 'sum',
-			'interpolated_grid_value': 'sum'
+			selected_variable: 'sum'
 		}).reset_index()
 		
 		# Paso 2: Dividir por el número de años en el periodo de análisis
@@ -631,11 +712,11 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 		
 		# Paso 3: Calcular la media mensual global entre todas las estaciones
 		monthly_avg_obs = station_monthly_obs.groupby('month').agg({
-			selected_variable: 'mean',
-			'interpolated_grid_value': 'mean'
+			selected_variable: 'mean'
 		}).reset_index()
 	# Exportar a CSV
-	monthly_avg_obs.to_csv(selected_variable + '_' + grid + '_annual_cycle_obs.csv', index=False)
+	monthly_avg_obs.to_csv(selected_variable + '_annual_cycle_obs.csv', index=False)
+
 
 	# Diccionario para almacenar los datos de métricas
 	metrics_data_dict = {}
@@ -678,6 +759,7 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 				)
 				# Configurar la barra de color
 				colorbar = plt.colorbar(scatter, ax=ax, label=f'{metric} ({units.get(metric, "")})')
+				
 				# Títulos y etiquetas
 				plt.title(f"{metric} comparison between {grid} and stations ")
 				plt.xlabel("Longitude")
@@ -691,7 +773,7 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 			print(f'Warning: No metrics file found for {grid} and {selected_variable}')
 	
 	# Cargar el ciclo anual de las observaciones desde su CSV
-	file_name_annual_cycle_obs = selected_variable + '_' + grid + '_annual_cycle_obs.csv'
+	file_name_annual_cycle_obs = selected_variable + '_annual_cycle_obs.csv'
 	annual_cycle_data_obs = pd.read_csv(file_name_annual_cycle_obs)
 
 	# Verificar los datos cargados
@@ -743,6 +825,10 @@ def generate_metrics_and_plots(selected_grids, selected_variable, start_year, en
 		plt.ylabel(selected_variable + ' (mm)')
 	elif selected_variable == 'wind_speed':
 		plt.ylabel(selected_variable + ' (m/s)')
+	elif selected_variable == 'humidity':
+		plt.ylabel(selected_variable + ' (%)')
+	elif selected_variable == 'radiation':
+		plt.ylabel(selected_variable + ' (J/m²)')
 	else:
 		plt.ylabel(selected_variable + ' (°C)')
 	plt.title('Average Annual Cycle')
@@ -781,8 +867,8 @@ def on_generate_button_click():
 	generate_metrics_and_plots(selected_grids, selected_variables[0], int(start_year), int(end_year), selected_months, interpolation_method)
 	
 # Variables y lista de rejillas
-variables = ['temperature', 'maximum_temperature', 'minimum_temperature', 'precipitation', 'wind_speed', 'humidity']
-grids = ['ISIMIP-CHELSA', 'CHIRTS', 'CHIRPS', 'ERA5', 'ERA5-Land', 'COSMO-REA6', 'CERRA', 'CERRA-Land', 'EOBS', 'EOBS_HR', 'EOBS_LR']
+variables = ['temperature', 'maximum_temperature', 'minimum_temperature', 'precipitation', 'wind_speed', 'humidity', 'radiation']
+grids = [ 'ISIMIP-CHELSA', 'CHIRTS', 'CHIRPS', 'ERA5', 'ERA5-Land', 'COSMO-REA6', 'CERRA', 'CERRA_LAND', 'EOBS', 'EOBS_HR', 'EOBS_LR', 'CLARA-A3']
 months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
 
@@ -818,6 +904,7 @@ radiobutton_nearest.grid(row=0, column=0, padx=5)
 
 radiobutton_bilinear = ttk.Radiobutton(frame_interpolation, text="Bilinear", variable=interpolation_var, value="linear")
 radiobutton_bilinear.grid(row=0, column=1, padx=5)
+
 
 # Etiquetas y entradas para seleccionar el periodo de tiempo
 label_period = ttk.Label(root, text='Select Period:')
@@ -868,4 +955,4 @@ generate_button = ttk.Button(root, text='Generate Metrics & Plots', command=on_g
 generate_button.pack(pady=20)
 
 # Iniciar la interfaz gráfica
-root.mainloop()
+root.mainloop() 
